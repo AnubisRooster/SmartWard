@@ -1,0 +1,11 @@
+# Generated from project.yml by XcodeGen
+SmartWard.xcodeproj/
+
+# SwiftPM / Xcode build output
+.build/
+.swiftpm/
+DerivedData/
+xcuserdata/
+*.xcuserstate
+
+.DS_Store
