@@ -15,6 +15,7 @@ let package = Package(
         .library(name: "StrategistCore", targets: ["StrategistCore"]),
         .library(name: "IngestKit", targets: ["IngestKit"]),
         .library(name: "AppLock", targets: ["AppLock"]),
+        .library(name: "Pipeline", targets: ["Pipeline"]),
     ],
     dependencies: [
         .package(url: "https://github.com/AnubisRooster/OnDeviceKit", branch: "main"),
@@ -33,6 +34,12 @@ let package = Package(
                     "KnowledgeStore",
                     .product(name: "SwiftSoup", package: "SwiftSoup"),
                 ]),
+        .target(name: "Pipeline",
+                dependencies: [
+                    "KnowledgeStore",
+                    "IngestKit",
+                    .product(name: "RetrievalKit", package: "OnDeviceKit"),
+                ]),
         .target(name: "AppLock",
                 dependencies: [
                     .product(name: "PINLockKit", package: "OnDeviceKit"),
@@ -46,6 +53,13 @@ let package = Package(
                         .product(name: "BYOKLLMKit", package: "OnDeviceKit"),
                     ]),
         .testTarget(name: "IngestKitTests", dependencies: ["IngestKit", "KnowledgeStore"]),
+        .testTarget(name: "PipelineTests",
+                    dependencies: [
+                        "Pipeline",
+                        "KnowledgeStore",
+                        "IngestKit",
+                        .product(name: "RetrievalKit", package: "OnDeviceKit"),
+                    ]),
         .testTarget(name: "AppLockTests",
                     dependencies: [
                         "AppLock",

@@ -27,7 +27,13 @@ struct ArticleReaderView: View {
                     .font(.title2.bold())
                 metadata
 
-                if article.stage == .fetched {
+                if !article.relevanceReason.isEmpty {
+                    Label(article.relevanceReason, systemImage: "sparkle.magnifyingglass")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+
+                if article.stage == .fetched || (article.stage == .triagedOut && article.cleanedText.count < 1_000) {
                     fullTextBanner
                 }
 

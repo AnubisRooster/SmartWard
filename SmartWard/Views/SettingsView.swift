@@ -1,5 +1,6 @@
 import SwiftUI
 import BYOKLLMKit
+import Pipeline
 
 struct SettingsView: View {
     @AppStorage("onboarding.completed") private var onboardingCompleted = false
@@ -16,6 +17,7 @@ struct SettingsView: View {
                 } footer: {
                     Text("Keys are stored only in this device's Keychain. An OpenRouter key alone reaches Anthropic, OpenAI, xAI and open models.")
                 }
+                ReadingSettingsSection()
                 GitHubSettingsSection()
                 SecuritySettingsSection()
                 Section {

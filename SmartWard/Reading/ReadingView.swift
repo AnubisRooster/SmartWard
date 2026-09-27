@@ -10,22 +10,40 @@ struct ReadingView: View {
         var id: Self { self }
     }
 
+    enum Order: String, CaseIterable, Identifiable {
+        case newest = "Newest", relevant = "Most relevant"
+        var id: Self { self }
+    }
+
     @Environment(\.modelContext) private var context
     @Query(sort: \Article.ingestedAt, order: .reverse) private var articles: [Article]
     @Query private var sources: [Source]
     @State private var filter: Filter = .unread
+    @AppStorage("reading.order") private var order: Order = .newest
+    @State private var showingFiltered = false
+    @State private var pipeline = PipelineController.shared
     @State private var ingest = IngestController.shared
     @State private var showingSources = false
 
+    private var reading: [Article] {
+        articles.filter { $0.source?.sourceKind != .githubRepo }
+    }
+
     private var visible: [Article] {
-        articles.filter { article in
-            guard article.source?.sourceKind != .githubRepo else { return false }
+        let filtered = reading.filter { article in
             switch filter {
-            case .unread: return !article.isRead
+            case .unread: return !article.isRead && (showingFiltered || article.stage != .triagedOut)
             case .starred: return article.isStarred
             case .all: return true
             }
         }
+        guard order == .relevant else { return filtered }
+        return filtered.sorted { $0.relevance > $1.relevance }
+    }
+
+    /// Unread items triage judged off-topic (FR-4).
+    private var filteredOutCount: Int {
+        reading.filter { !$0.isRead && $0.stage == .triagedOut }.count
     }
 
     private var hasFollowedSources: Bool {
@@ -54,6 +72,22 @@ struct ReadingView: View {
                             .tint(.yellow)
                     }
                 }
+                if filter == .unread, filteredOutCount > 0 {
+                    Button {
+                        showingFiltered.toggle()
+                    } label: {
+                        Label(showingFiltered ? "Hide off-topic items" : "Show \(filteredOutCount) off-topic items",
+                              systemImage: showingFiltered ? "eye.slash" : "line.3.horizontal.decrease.circle")
+                            .font(.subheadline)
+                    }
+                    .listRowSeparator(.hidden)
+                }
+                if let reason = pipeline.unavailableReason {
+                    Label(reason, systemImage: "exclamationmark.triangle")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .listRowSeparator(.hidden)
+                }
             }
             .listStyle(.plain)
             .safeAreaInset(edge: .top) {
@@ -77,8 +111,13 @@ struct ReadingView: View {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("Sources", systemImage: "dot.radiowaves.up.forward") { showingSources = true }
                 }
+                ToolbarItem(placement: .secondaryAction) {
+                    Picker("Order", selection: $order) {
+                        ForEach(Order.allCases) { Text($0.rawValue).tag($0) }
+                    }
+                }
                 ToolbarItem(placement: .primaryAction) {
-                    if ingest.isRefreshing {
+                    if ingest.isRefreshing || pipeline.isRunning {
                         ProgressView()
                     } else {
                         Button("Refresh", systemImage: "arrow.clockwise") {
