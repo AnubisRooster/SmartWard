@@ -20,6 +20,8 @@ final class ChatController {
     var errorMessage: String?
 
     private var approval: CheckedContinuation<Bool, Never>?
+    /// For runs with nobody to ask (Siri, Shortcuts): every action is declined.
+    var declinesActions = false
 
     /// `nil` uses your provider with model fallback (NFR-5).
     private let llm: (any LLMCompleting)?
@@ -136,6 +138,7 @@ final class ChatController {
     }
 
     private func requestApproval(_ action: ActionRequest) async -> Bool {
+        if declinesActions { return false }
         resolve(approved: false)
         return await withCheckedContinuation { continuation in
             approval = continuation
