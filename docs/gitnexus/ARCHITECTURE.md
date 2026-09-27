@@ -6,15 +6,15 @@ _Auto-generated from the GitNexus knowledge graph on every push to `main`. Do no
 
 | nodes | edges |
 | ----- | ----- |
-| 5628 | 24608 |
+| 5642 | 24600 |
 
 ## God nodes (highest out-degree, tests excluded)
 
 | symbol | file | outDegree |
 | --- | --- | --- |
-| DigestBuilder.swift | Packages/SmartWardKit/Sources/Pipeline/DigestBuilder.swift | 179 |
+| DigestBuilder.swift | Packages/SmartWardKit/Sources/Pipeline/DigestBuilder.swift | 178 |
 | HybridSearch.swift | Packages/SmartWardKit/Sources/Pipeline/HybridSearch.swift | 177 |
-| GraphEditing.swift | Packages/SmartWardKit/Sources/Pipeline/GraphEditing.swift | 174 |
+| GraphEditing.swift | Packages/SmartWardKit/Sources/Pipeline/GraphEditing.swift | 175 |
 | restore | Packages/SmartWardKit/Sources/KnowledgeStore/LibraryRestore.swift | 160 |
 | Onboarding.swift | Packages/SmartWardKit/Sources/StrategistCore/Onboarding.swift | 155 |
 | LibraryArchive.swift | Packages/SmartWardKit/Sources/KnowledgeStore/LibraryArchive.swift | 155 |
