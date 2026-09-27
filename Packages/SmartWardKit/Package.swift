@@ -46,6 +46,7 @@ let package = Package(
                     "StrategistCore",
                     .product(name: "RetrievalKit", package: "OnDeviceKit"),
                     .product(name: "BYOKLLMKit", package: "OnDeviceKit"),
+                    .product(name: "GraphKit", package: "OnDeviceKit"),
                 ]),
         .target(name: "AppLock",
                 dependencies: [
@@ -69,6 +70,7 @@ let package = Package(
                         "StrategistCore",
                         .product(name: "RetrievalKit", package: "OnDeviceKit"),
                         .product(name: "BYOKLLMKit", package: "OnDeviceKit"),
+                        .product(name: "GraphKit", package: "OnDeviceKit"),
                     ]),
         .testTarget(name: "AppLockTests",
                     dependencies: [

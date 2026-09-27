@@ -37,6 +37,10 @@ Phase 4 strategist, done:
 - [x] Daily digest: the Today tab gathers articles linked since the last digest into theme clusters. Themes that show up in most new articles don't glue everything together. Clusters are ranked by how much they touch your active projects, how new their themes are, and how many articles they cover. The top three are summarized by your provider while the budget allows and without private content; the rest on-device. An optional notification says when a digest is ready. Settings moved behind the gear on Today
 - [x] Red-team suite: a corpus of poisoned articles is fed to a model that obeys every injected instruction. The attacks cover direct orders, fence breaks in any case or spacing, fake system turns, exfiltration through URLs, requests to cloud metadata and local hosts, credentials in URLs, planted decisions, brief rewrites, guessed private document ids, poisoned titles and theme names, and floods of tool calls. None of them adds, fetches or records anything without your approval, changes the brief, or gets private content to the provider. Saving a decision or other strategy item now asks for approval too, and every prompt fence escapes untrusted text the same way
 
+Phase 5 hardening, in progress:
+
+- [x] Export: Settings → Export shares your library as versioned JSON (every table, relationships as ids, deterministic), the knowledge graph as GraphML (through OnDeviceKit's GraphKit) for Gephi or yEd, and projects as Markdown (goal, brief, decisions, open questions, action items and the brief's history). Private-repo content, links to private repos and themes found only there are left out unless you include them
+
 ## Requirements
 
 - Xcode 26+ and iOS 26+, on an iPhone 15 Pro or newer (Apple Intelligence-capable)
