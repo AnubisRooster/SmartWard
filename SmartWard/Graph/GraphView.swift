@@ -22,6 +22,11 @@ struct GraphView: View {
     @State private var positions: [UUID: ForceLayout.Point] = [:]
     @State private var selected: ThemeNode?
     @State private var showingReview = false
+    @AppStorage("graph.showsList") private var showsList = false
+    @Environment(\.accessibilityVoiceOverEnabled) private var voiceOverEnabled
+
+    /// The list reads well with VoiceOver and large text; the canvas doesn't.
+    private var asList: Bool { showsList || voiceOverEnabled }
 
     private var graphScope: GraphSnapshot.Scope {
         switch scope {
@@ -36,8 +41,25 @@ struct GraphView: View {
         NavigationStack {
             Group {
                 if snapshot.nodes.isEmpty {
-                    ContentUnavailableView("No themes yet", systemImage: "point.3.connected.trianglepath.dotted",
-                                           description: Text("Themes appear as SmartWard reads your sources and your conversations."))
+                    if nodes.isEmpty {
+                        ContentUnavailableView("No themes yet", systemImage: "point.3.connected.trianglepath.dotted",
+                                               description: Text("Themes appear as SmartWard reads your sources and your conversations."))
+                    } else {
+                        ContentUnavailableView {
+                            Label("No themes here", systemImage: "line.3.horizontal.decrease.circle")
+                        } description: {
+                            Text("Nothing in this scope is active right now. Quiet themes are hidden until they come up again.")
+                        } actions: {
+                            Button("Show all themes") {
+                                scope = .all
+                                showDormant = true
+                            }
+                        }
+                    }
+                } else if asList {
+                    ThemeList(snapshot: snapshot) { id in
+                        selected = nodes.first { $0.id == id }
+                    }
                 } else {
                     GraphCanvas(snapshot: snapshot, positions: positions) { id in
                         selected = nodes.first { $0.id == id }
@@ -68,6 +90,7 @@ struct GraphView: View {
                             }
                         }
                         Toggle("Show dormant themes", isOn: $showDormant)
+                        Toggle("Show as a list", isOn: $showsList)
                     } label: {
                         Label("Scope", systemImage: "line.3.horizontal.decrease.circle")
                     }
@@ -111,6 +134,31 @@ struct GraphView: View {
             ?? GraphSnapshot(nodes: [], edges: [])
         snapshot = built
         positions = ForceLayout.layout(built)
+    }
+}
+
+/// The snapshot as a list, strongest first: the accessible alternative to
+/// the canvas (used automatically with VoiceOver).
+struct ThemeList: View {
+    let snapshot: GraphSnapshot
+    var onSelect: (UUID) -> Void
+
+    var body: some View {
+        let connections = Dictionary(grouping: snapshot.edges.flatMap { [$0.source, $0.target] }, by: { $0 })
+            .mapValues(\.count)
+        List(snapshot.nodes) { node in
+            Button {
+                onSelect(node.id)
+            } label: {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(node.label).font(.headline)
+                    Text("\(node.type.capitalized) · \(node.mentions) \(node.mentions == 1 ? "mention" : "mentions") · \(connections[node.id, default: 0]) connected")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .foregroundStyle(.primary)
+        }
     }
 }
 
@@ -165,6 +213,7 @@ struct GraphCanvas: View {
                         .accessibilityElement(children: .ignore)
                         .accessibilityLabel("\(node.label), \(node.type), \(node.mentions) mentions")
                         .accessibilityAddTraits(.isButton)
+                        .accessibilityAction { onTap(node.id) }
                     }
                 }
             }

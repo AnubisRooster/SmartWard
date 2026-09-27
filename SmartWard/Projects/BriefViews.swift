@@ -322,6 +322,7 @@ struct StrategyItemsSection: View {
                 } icon: {
                     Image(systemName: Self.systemImage(for: item.kind))
                 }
+                .accessibilityLabel("\(Self.name(for: item.kind)): \(item.text)")
                 .swipeActions {
                     Button("Done") { item.status = .done }.tint(.green)
                     Button("Superseded") { item.status = .superseded }.tint(.gray)
@@ -332,6 +333,16 @@ struct StrategyItemsSection: View {
         } footer: {
             let closed = items.count - open.count
             if closed > 0 { Text("\(closed) closed.") }
+        }
+    }
+
+    static func name(for kind: StrategyItemKind) -> String {
+        switch kind {
+        case .decision: return "Decision"
+        case .openQuestion: return "Open question"
+        case .actionItem: return "Action item"
+        case .assumption: return "Assumption"
+        case .risk: return "Risk"
         }
     }
 

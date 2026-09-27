@@ -2,6 +2,7 @@ import SwiftUI
 import SwiftData
 import KnowledgeStore
 import Pipeline
+import BYOKLLMKit
 import StrategistCore
 
 struct ConversationView: View {
@@ -19,6 +20,14 @@ struct ConversationView: View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 12) {
+                    if let warning = missingKeyWarning {
+                        Label(warning, systemImage: "key.slash")
+                            .font(.footnote)
+                            .foregroundStyle(.orange)
+                    }
+                    if messages.isEmpty && !controller.isRunning {
+                        EmptyChatHint(conversation: conversation)
+                    }
                     ForEach(messages) { message in
                         VStack(alignment: .leading, spacing: 6) {
                             MessageRow(role: message.role, text: message.content)
@@ -67,6 +76,15 @@ struct ConversationView: View {
         .navigationDestination(for: Article.self) { article in
             ArticleReaderView(article: article)
         }
+    }
+
+    /// Sending fails without a key; say so before you type.
+    private var missingKeyWarning: String? {
+        guard let provider = LLMProvider(rawValue: conversation.provider) else {
+            return "This chat's provider isn't available any more. Start a new chat."
+        }
+        guard !LLMKeychainStore.shared.hasKey(for: provider) else { return nil }
+        return "There's no API key for \(provider.displayName). Add one in Settings, behind the gear on Today."
     }
 
     private var composer: some View {
@@ -125,11 +143,57 @@ private struct ActionConfirmationCard: View {
     }
 }
 
+/// What a new chat is for, before the first message.
+private struct EmptyChatHint: View {
+    let conversation: Conversation
+
+    private var purpose: String {
+        switch conversation.mode {
+        case .brainstorm: return "Brainstorm: widen the options and find the promising directions."
+        case .critique: return "Critique: find the weakest assumption in a plan and what would test it."
+        case .researchPlan: return "Research plan: turn a question into what to read and test next."
+        case .weeklyReview: return "Weekly review: open questions, stale action items, and what matters next."
+        case .onboarding: return "Setup interview."
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(purpose)
+            if let project = conversation.project {
+                Text("Working in \(project.name), with its brief and open items.")
+            }
+            Text("Answers draw on your library and cite it. Fetching a page, adding a source or saving a decision always asks you first.")
+            if conversation.offTheRecord {
+                Text("Off the record: this chat is added to your knowledge graph on-device only, never through your provider.")
+            }
+        }
+        .font(.footnote)
+        .foregroundStyle(.secondary)
+        .padding(.vertical, 8)
+    }
+}
+
 private struct MessageRow: View {
     let role: String
     let text: String
 
     var body: some View {
+        bubble
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("\(speaker): \(text)")
+    }
+
+    private var speaker: String {
+        switch role {
+        case "user": return "You"
+        case "tool": return "Activity"
+        default: return "SmartWard"
+        }
+    }
+
+    @ViewBuilder
+    private var bubble: some View {
         switch role {
         case "user":
             HStack {

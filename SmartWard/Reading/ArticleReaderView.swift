@@ -39,6 +39,13 @@ struct ArticleReaderView: View {
                     fullTextBanner
                 }
 
+                if paragraphs.isEmpty && article.stage != .fetched {
+                    Label("Only the headline was saved for this item. Open the original to read it.",
+                          systemImage: "doc.text.magnifyingglass")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+
                 ForEach(Array(paragraphs.enumerated()), id: \.offset) { _, paragraph in
                     Text(paragraph)
                         .font(.body)

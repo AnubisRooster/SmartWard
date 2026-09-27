@@ -185,6 +185,13 @@ struct ArticleRow: View {
     let article: Article
 
     var body: some View {
+        content
+            .accessibilityElement(children: .combine)
+            .accessibilityValue([article.isRead ? nil : "Unread", article.isStarred ? "Starred" : nil]
+                .compactMap { $0 }.joined(separator: ", "))
+    }
+
+    private var content: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 6) {
                 if !article.isRead {
@@ -199,6 +206,7 @@ struct ArticleRow: View {
                 Spacer(minLength: 4)
                 if article.isStarred {
                     Image(systemName: "star.fill").foregroundStyle(.yellow)
+                        .accessibilityHidden(true)
                 }
                 Text(article.publishedAt ?? article.ingestedAt, format: .relative(presentation: .named))
             }
