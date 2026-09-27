@@ -221,11 +221,11 @@ public enum ReferenceContext {
     public static func render(_ passages: [RetrievedPassage]) -> String {
         guard !passages.isEmpty else { return "" }
         let blocks = passages.map { passage in
-            let title = passage.title.replacingOccurrences(of: "\"", with: "'")
-            let text = passage.text
-                .replacingOccurrences(of: "<reference", with: "‹reference")
-                .replacingOccurrences(of: "</reference", with: "‹/reference")
-            return "<reference id=\"\(passage.id)\" title=\"\(title)\" why=\"\(passage.why.description)\">\n\(text)\n</reference>"
+            let title = UntrustedText.attribute(passage.title)
+            // Theme names come from extraction, so they're untrusted too.
+            let why = UntrustedText.attribute(passage.why.description)
+            let text = UntrustedText.body(passage.text, tag: "reference")
+            return "<reference id=\"\(passage.id)\" title=\"\(title)\" why=\"\(why)\">\n\(text)\n</reference>"
         }
         return "Reference material from the user's library:\n" + blocks.joined(separator: "\n")
     }

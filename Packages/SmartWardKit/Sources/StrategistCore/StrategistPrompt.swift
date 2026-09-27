@@ -164,6 +164,13 @@ public enum StrategistPrompt {
         return lines.joined(separator: "\n")
     }
 
+    static func article(for kind: StrategyItemKind) -> String {
+        switch kind {
+        case .actionItem, .openQuestion, .assumption: return "an"
+        case .decision, .risk: return "a"
+        }
+    }
+
     static func label(for kind: StrategyItemKind) -> String {
         switch kind {
         case .decision:     return "decision"

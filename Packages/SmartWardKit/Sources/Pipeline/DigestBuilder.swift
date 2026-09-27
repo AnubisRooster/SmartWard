@@ -57,16 +57,15 @@ public enum DigestPrompt {
     """
 
     public static func user(_ request: DigestSummaryRequest, maxCharacters: Int) -> String {
-        var lines = ["Themes: \(request.themes.joined(separator: ", "))"]
+        // Theme names come from extraction, so they're untrusted too.
+        var lines = ["Themes: \(UntrustedText.attribute(request.themes.joined(separator: ", ")))"]
         if !request.projects.isEmpty {
             lines.append("Projects: \(request.projects.joined(separator: ", "))")
         }
         let budget = max(200, maxCharacters / max(1, request.excerpts.count))
         for excerpt in request.excerpts {
-            let text = excerpt.text
-                .replacingOccurrences(of: "<document", with: "‹document")
-                .replacingOccurrences(of: "</document", with: "‹/document")
-            lines.append("<document title=\"\(excerpt.title.replacingOccurrences(of: "\"", with: "'"))\">\n\(text.prefix(budget))\n</document>")
+            let text = UntrustedText.body(String(excerpt.text.prefix(budget)), tag: "document")
+            lines.append("<document title=\"\(UntrustedText.attribute(excerpt.title))\">\n\(text)\n</document>")
         }
         return lines.joined(separator: "\n")
     }

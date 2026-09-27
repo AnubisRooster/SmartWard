@@ -141,7 +141,7 @@ public enum ExtractionPrompt {
     """
 
     public static func user(_ text: String) -> String {
-        "<document>\n\(text)\n</document>"
+        "<document>\n\(UntrustedText.body(text, tag: "document"))\n</document>"
     }
 
     /// Strict-mode JSON Schema (every property required, no extras).

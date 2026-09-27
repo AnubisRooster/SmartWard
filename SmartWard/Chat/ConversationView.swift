@@ -96,7 +96,7 @@ private struct ActionConfirmationCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Label(action.title, systemImage: action.tool == "fetch_url" ? "globe" : "plus.circle")
+            Label(action.title, systemImage: Self.systemImage(for: action.tool))
                 .font(.subheadline.weight(.semibold))
             Text(action.detail)
                 .font(.caption.monospaced())
@@ -114,6 +114,14 @@ private struct ActionConfirmationCard: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
         .accessibilityElement(children: .contain)
+    }
+
+    static func systemImage(for tool: String) -> String {
+        switch tool {
+        case "fetch_url": return "globe"
+        case "record_strategy_item": return "square.and.pencil"
+        default: return "plus.circle"
+        }
     }
 }
 
