@@ -2,7 +2,8 @@
 import PackageDescription
 
 // Platform floors are SwiftData's minimums, not the app's (the app targets
-// iOS 26). Keeping them low lets `swift test` run on any macOS 14+ CI host.
+// iOS 26). OnDeviceKit declares iOS only, so tests run on the iOS Simulator
+// (see .github/workflows/ci.yml), not with `swift test` on the macOS host.
 let package = Package(
     name: "SmartWardKit",
     platforms: [
@@ -11,9 +12,24 @@ let package = Package(
     ],
     products: [
         .library(name: "KnowledgeStore", targets: ["KnowledgeStore"]),
+        .library(name: "StrategistCore", targets: ["StrategistCore"]),
+    ],
+    dependencies: [
+        .package(url: "https://github.com/AnubisRooster/OnDeviceKit", branch: "main"),
     ],
     targets: [
         .target(name: "KnowledgeStore"),
+        .target(name: "StrategistCore",
+                dependencies: [
+                    "KnowledgeStore",
+                    .product(name: "BYOKLLMKit", package: "OnDeviceKit"),
+                ]),
         .testTarget(name: "KnowledgeStoreTests", dependencies: ["KnowledgeStore"]),
+        .testTarget(name: "StrategistCoreTests",
+                    dependencies: [
+                        "StrategistCore",
+                        "KnowledgeStore",
+                        .product(name: "BYOKLLMKit", package: "OnDeviceKit"),
+                    ]),
     ]
 )

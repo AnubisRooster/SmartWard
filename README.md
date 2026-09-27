@@ -11,7 +11,7 @@ Phase 1 foundation, in progress:
 
 - [x] `SmartWardKit/KnowledgeStore`: the full SwiftData model (CloudKit-compatible), the private-content policy, and derived theme strength
 - [x] App shell: tabs, SwiftData-backed Projects with repo/URL links, and BYOK key settings
-- [ ] Strategist chat. This needs the tool-calling and streaming API from [OnDeviceKit#6](https://github.com/AnubisRooster/OnDeviceKit/pull/6)
+- [x] Strategist chat: streaming BYOK chat with four modes, scoped to a project, where the strategist can read project state and record decisions and open questions
 - [ ] Onboarding interview, and app lock
 
 ## Requirements
@@ -27,8 +27,9 @@ xcodegen generate          # SmartWard.xcodeproj is generated, not committed
 open SmartWard.xcodeproj
 ```
 
-Package tests run without the app:
+Package tests run without the app, on the iOS Simulator:
 
 ```sh
-cd Packages/SmartWardKit && swift test
+cd Packages/SmartWardKit
+xcodebuild test -scheme SmartWardKit-Package -destination 'platform=iOS Simulator,name=iPhone 17 Pro'
 ```

@@ -6,8 +6,10 @@ on:
   pull_request:
 
 jobs:
-  # SwiftData schema, context policy (D5) and pure logic. Runs on the macOS
-  # host: the package's platform floors are SwiftData's minimums, not the app's.
+  # SwiftData schema, context policy (D5), strategist loop and tools. Runs on
+  # the iOS Simulator: OnDeviceKit declares iOS only, so `swift test` on the
+  # macOS host can't build StrategistCore. OS= is pinned because an
+  # unqualified simulator name is ambiguous when several runtimes are installed.
   package-tests:
     runs-on: macos-latest
     steps:
@@ -17,7 +19,13 @@ jobs:
           xcode-version: latest-stable
       - name: Test SmartWardKit
         working-directory: Packages/SmartWardKit
-        run: swift test
+        run: |
+          RUNTIME=$(xcrun simctl list runtimes available | grep -Eo 'iOS [0-9]+(\.[0-9]+)*' | sort -V | tail -1 | sed 's/iOS //')
+          DEVICE=$(xcrun simctl list devices available "iOS $RUNTIME" | grep -Eo 'iPhone [0-9]+ Pro' | head -1)
+          echo "Using simulator: $DEVICE (iOS $RUNTIME)"
+          xcodebuild test \
+            -scheme SmartWardKit-Package \
+            -destination "platform=iOS Simulator,OS=$RUNTIME,name=$DEVICE"
 
   # The app targets iOS 26, so it needs Xcode 26+. The Xcode project is
   # generated from project.yml and not committed.
