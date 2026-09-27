@@ -200,6 +200,11 @@ final class GraphSnapshotTests: XCTestCase {
         try context.save()
         _ = vllm.mentions?.count // resolved (and cached) as empty, as a lookup during resolution would
 
+        func mention(_ node: ThemeNode, in chunk: KnowledgeStore.Chunk, at date: Date) {
+            let mention = Mention(confidence: 1, createdAt: date)
+            mention.node = node
+            chunk.mentions?.append(mention)
+        }
         mention(vllm, in: chunk, at: now)
         mention(vllm, in: turnChunk, at: now)
         try context.save()
