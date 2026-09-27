@@ -14,7 +14,7 @@ Phase 1 foundation, in progress:
 - [x] Strategist chat: streaming BYOK chat with four modes, scoped to a project, where the strategist can read project state and record decisions and open questions
 - [x] Onboarding interview: key and Apple Intelligence preflight, a strategist-led interview with pasted links, and a structured setup proposal you edit before anything is created
 - [x] GitHub sign-in and repo sync: one-tap device flow (with a token as the advanced option), a repo picker, and read-only sync of docs and manifests; private repos stay on-device, and dependencies feed the dependency radar
-- [ ] App lock
+- [x] App lock: Face ID/Touch ID with a PIN fallback, a lock on launch and after a background grace period, and a privacy cover in the app switcher
 
 ## Requirements
 

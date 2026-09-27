@@ -35,14 +35,21 @@ targets:
         product: StrategistCore
       - package: SmartWardKit
         product: IngestKit
+      - package: SmartWardKit
+        product: AppLock
       - package: OnDeviceKit
         product: BYOKLLMKit
+      - package: OnDeviceKit
+        product: PINLockKit
+      - package: OnDeviceKit
+        product: BiometricLockKit
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.intelligentdesignsllc.smartward
         TARGETED_DEVICE_FAMILY: "1"
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_CFBundleDisplayName: SmartWard
+        INFOPLIST_KEY_NSFaceIDUsageDescription: "SmartWard uses Face ID to unlock your research and conversations."
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
         INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait

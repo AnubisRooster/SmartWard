@@ -8,6 +8,7 @@ Local-first iOS research strategist. The source of truth for requirements, desig
 - `Packages/SmartWardKit/`: local SPM package. Keep logic here, not in views, so `swift test` covers it without a simulator.
   - `KnowledgeStore`: the SwiftData models, `KnowledgeSchema`, `ContextPolicy` and `ThemeStrength`.
   - `IngestKit`: the GET-only `GitHubClient`, `GitHubDeviceFlow`, `GitHubTokenStore` (device-only Keychain), `ManifestParser`, and `RepoSync` (repo docs → articles, dependency radar).
+  - `AppLock`: `AppLockPolicy` (when to lock), `AppLockCoordinator` (biometrics first, PIN fallback, re-baseline after enrollment changes), and `PINRules`. It sits on OnDeviceKit's `PINLockKit` and `BiometricLockKit`.
   - `StrategistCore`: the tool-calling loop (`StrategistRunner`), mode prompts, history budgeting, and project tools. It depends on OnDeviceKit's `BYOKLLMKit`.
 - Shared, domain-agnostic code belongs in [OnDeviceKit](https://github.com/AnubisRooster/OnDeviceKit), not here.
 
