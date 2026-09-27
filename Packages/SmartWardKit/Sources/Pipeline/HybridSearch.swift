@@ -130,7 +130,15 @@ public struct HybridSearchIndex: Sendable {
 
     public var documentCount: Int { documents.count }
 
-    public func search(_ query: String, queryVector: [Float]?, limit: Int = 25) -> [SearchHit] {
+    /// A document with its fused score and how it matched.
+    public struct RankedDocument: Equatable, Sendable {
+        public var document: SearchDocument
+        public var score: Double
+        public var matchedBy: SearchHit.MatchKind
+    }
+
+    /// Documents (article headers and chunks) ranked by reciprocal rank fusion.
+    public func rankDocuments(_ query: String, queryVector: [Float]?, limit: Int = 50) -> [RankedDocument] {
         let keywordHits = lexical.search(query, limit: Self.candidates).map(\.id)
         var semanticHits: [String] = []
         if let queryVector {
@@ -151,12 +159,22 @@ public struct HybridSearchIndex: Sendable {
             let current = fused[id] ?? (score: 0, kind: [])
             fused[id] = (score: current.score + 1 / (Self.fusionK + Double(rank + 1)), kind: current.kind.union(.semantic))
         }
+        var ranked: [RankedDocument] = []
+        for (id, match) in fused {
+            guard let document = documents[id] else { continue }
+            ranked.append(RankedDocument(document: document, score: match.score, matchedBy: match.kind))
+        }
+        ranked.sort { $0.score != $1.score ? $0.score > $1.score : $0.document.id < $1.document.id }
+        return Array(ranked.prefix(limit))
+    }
 
+    public func search(_ query: String, queryVector: [Float]?, limit: Int = 25) -> [SearchHit] {
         // One hit per article: its best document's score and snippet, and
         // every way any of its documents matched.
         var byArticle: [UUID: SearchHit] = [:]
-        for (id, match) in fused {
-            guard let document = documents[id] else { continue }
+        for ranked in rankDocuments(query, queryVector: queryVector, limit: Int.max) {
+            let document = ranked.document
+            let match = (score: ranked.score, kind: ranked.matchedBy)
             let snippet = Self.snippet(document.text, query: query)
             if var existing = byArticle[document.articleID] {
                 existing.matchedBy = existing.matchedBy.union(match.kind)

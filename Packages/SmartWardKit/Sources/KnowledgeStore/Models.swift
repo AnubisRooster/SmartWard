@@ -294,6 +294,9 @@ public final class Message {
     public var createdAt: Date = Date()
     /// When this turn was chunked, embedded and added to the graph; `nil` until then.
     public var indexedAt: Date?
+    /// For assistant turns: the library passages it was given, as JSON
+    /// (ids, titles and why each was retrieved), shown as its sources.
+    public var referencesJSON: String?
 
     @Relationship(deleteRule: .cascade, inverse: \Chunk.message)
     public var chunks: [Chunk]? = []

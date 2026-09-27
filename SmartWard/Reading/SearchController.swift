@@ -17,6 +17,17 @@ final class SearchController {
     private var indexedFingerprint: (articles: Int, chunks: Int)?
     private let embedder = EmbeddingModel.appleSentence()
 
+    /// Context for the strategist: GraphRAG over the library (PLAN §5.2).
+    func passages(for query: String, excludingConversation conversationID: UUID?,
+                  context: ModelContext) async -> [RetrievedPassage] {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return [] }
+        await ensureIndex(context: context)
+        let vector = await embedder?.provider.embed(trimmed)
+        return (try? GraphRetriever().retrieve(query: trimmed, queryVector: vector, index: index,
+                                               excludingConversation: conversationID, context: context)) ?? []
+    }
+
     func search(_ query: String, context: ModelContext) async -> [SearchHit] {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return [] }
