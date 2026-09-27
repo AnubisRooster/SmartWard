@@ -60,9 +60,16 @@ public enum UsageLedger {
     @discardableResult
     public static func record(provider: String, model: String, feature: String,
                               inputTokens: Int, outputTokens: Int, reportedCostUSD: Double?,
-                              context: ModelContext, prices: PriceBook = PriceBook.current,
+                              context: ModelContext, prices: PriceBook? = nil,
                               now: Date = Date()) -> UsageRecord {
-        let cost = prices.cost(model: model, inputTokens: inputTokens, outputTokens: outputTokens,
+        // `PriceBook.current` is main-actor state, so it can't be a default argument.
+        let book: PriceBook
+        if let prices {
+            book = prices
+        } else {
+            book = PriceBook.current
+        }
+        let cost = book.cost(model: model, inputTokens: inputTokens, outputTokens: outputTokens,
                                reported: reportedCostUSD)
         let record = UsageRecord(provider: provider, model: model, feature: feature,
                                  inputTokens: inputTokens, outputTokens: outputTokens, costUSD: cost.usd)
