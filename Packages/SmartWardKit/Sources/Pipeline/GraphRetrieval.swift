@@ -114,16 +114,23 @@ public struct GraphRetriever {
         var neighbors: [(node: ThemeNode, seed: ThemeNode, weight: Int)] = []
         if !seeds.isEmpty {
             var byID: [UUID: ThemeNode] = [:]
-            let allNodes = try context.fetch(FetchDescriptor<ThemeNode>())
-            for node in allNodes { byID[node.id] = node }
+            for seed in seeds { byID[seed.id] = seed }
             var weights: [UUID: (seed: UUID, weight: Int)] = [:]
-            let edges = try context.fetch(FetchDescriptor<ThemeEdge>())
+            // Only the seeds' edges, not the whole graph.
+            let seedList = Array(seedIDs)
+            let edges = try context.fetch(FetchDescriptor<ThemeEdge>(predicate: #Predicate {
+                seedList.contains($0.sourceNodeID) || seedList.contains($0.targetNodeID)
+            }))
             for edge in edges {
                 let directions = [(edge.sourceNodeID, edge.targetNodeID), (edge.targetNodeID, edge.sourceNodeID)]
                 for (from, to) in directions where seedIDs.contains(from) && !seedIDs.contains(to) {
                     let current = weights[to] ?? (seed: from, weight: 0)
                     weights[to] = (seed: current.seed, weight: current.weight + 1)
                 }
+            }
+            let neighborIDs = Array(weights.keys)
+            for node in try context.fetch(FetchDescriptor<ThemeNode>(predicate: #Predicate { neighborIDs.contains($0.id) })) {
+                byID[node.id] = node
             }
             for (id, entry) in weights {
                 guard let node = byID[id], let seed = byID[entry.seed] else { continue }
@@ -181,15 +188,24 @@ public struct GraphRetriever {
             }
         }
 
-        var found: [ThemeNode] = []
-        var seen = Set<UUID>()
-        for node in try context.fetch(FetchDescriptor<ThemeNode>(sortBy: [SortDescriptor(\.createdAt)])) {
-            let keys = [EntityResolver.key(node.canonicalLabel)] + (node.aliases ?? []).map { EntityResolver.key($0.alias) }
-            if keys.contains(where: { $0.count >= 2 && grams.contains($0) }), seen.insert(node.id).inserted {
-                found.append(node)
-            }
+        grams = grams.filter { $0.count >= 2 }
+        guard !grams.isEmpty else { return [] }
+
+        // Labels through the stored "type:key" index, so only matching themes load.
+        let candidates = ExtractedGraph.entityTypes.flatMap { type in grams.map { "\(type):\($0)" } }
+        var matches = try context.fetch(FetchDescriptor<ThemeNode>(predicate: #Predicate {
+            candidates.contains($0.normalizedKey)
+        }))
+        // Aliases have no stored key; they're short strings, so scan them.
+        let known = Set(matches.map(\.id))
+        for alias in try context.fetch(FetchDescriptor<EntityAlias>()) {
+            guard let node = alias.node, !known.contains(node.id), grams.contains(EntityResolver.key(alias.alias)) else { continue }
+            matches.append(node)
         }
-        return found
+        var seen = Set<UUID>()
+        return matches
+            .sorted { $0.createdAt != $1.createdAt ? $0.createdAt < $1.createdAt : $0.id.uuidString < $1.id.uuidString }
+            .filter { seen.insert($0.id).inserted }
     }
 
     private func passage(_ chunk: KnowledgeStore.Chunk, id: String, why: RetrievedPassage.Why) -> RetrievedPassage {

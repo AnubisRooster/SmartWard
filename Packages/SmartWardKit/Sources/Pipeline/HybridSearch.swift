@@ -1,4 +1,5 @@
 import Foundation
+import Accelerate
 import SwiftData
 import RetrievalKit
 import KnowledgeStore
@@ -28,6 +29,7 @@ public struct LexicalIndex: Sendable {
 
     private var postings: [String: [Int: Int]] = [:]
     private var lengths: [Int] = []
+    private var totalLength = 0
     private(set) var ids: [String] = []
 
     public init() {}
@@ -39,6 +41,7 @@ public struct LexicalIndex: Sendable {
         ids.append(id)
         let tokens = Self.tokens(text)
         lengths.append(tokens.count)
+        totalLength += tokens.count
         for token in tokens {
             postings[token, default: [:]][index, default: 0] += 1
         }
@@ -47,7 +50,7 @@ public struct LexicalIndex: Sendable {
     public func search(_ query: String, limit: Int) -> [(id: String, score: Double)] {
         let terms = Set(Self.tokens(query))
         guard !terms.isEmpty, !ids.isEmpty else { return [] }
-        let averageLength = max(1, Double(lengths.reduce(0, +)) / Double(lengths.count))
+        let averageLength = max(1, Double(totalLength) / Double(lengths.count))
         let total = Double(ids.count)
 
         var scores: [Int: Double] = [:]
@@ -61,10 +64,11 @@ public struct LexicalIndex: Sendable {
                 scores[doc, default: 0] += idf * norm
             }
         }
-        return scores
-            .sorted { $0.value != $1.value ? $0.value > $1.value : $0.key < $1.key }
-            .prefix(limit)
-            .map { (id: ids[$0.key], score: $0.value) }
+        var best = TopK<(doc: Int, score: Double)>(limit) { a, b in
+            a.score != b.score ? a.score > b.score : a.doc < b.doc
+        }
+        for (doc, score) in scores { best.insert((doc, score)) }
+        return best.sorted().map { (id: ids[$0.doc], score: $0.score) }
     }
 
     /// Lowercased tokens. "SWE-bench" yields "swe-bench", "swe" and "bench".
@@ -117,15 +121,50 @@ public struct HybridSearchIndex: Sendable {
     static let minimumSimilarity: Float = 0.3
 
     private var lexical = LexicalIndex()
-    private var vectors: [(id: String, vector: [Float])] = []
     private var documents: [String: SearchDocument] = [:]
+    /// Unit-length vectors, one row per id in `vectorIDs`, so a query is one
+    /// matrix-vector product instead of a cosine per document.
+    private var matrix: [Float] = []
+    private var vectorIDs: [String] = []
+    private var dimension = 0
 
     public init(documents: [SearchDocument]) {
         for document in documents {
             lexical.add(id: document.id, text: document.text)
-            if let vector = document.vector, !vector.isEmpty { vectors.append((id: document.id, vector: vector)) }
             self.documents[document.id] = document
+            guard let vector = document.vector, !vector.isEmpty else { continue }
+            if dimension == 0 { dimension = vector.count }
+            // Vectors of another size came from another model; they can't be compared.
+            guard vector.count == dimension, let unit = Self.normalized(vector) else { continue }
+            matrix.append(contentsOf: unit)
+            vectorIDs.append(document.id)
         }
+    }
+
+    static func normalized(_ vector: [Float]) -> [Float]? {
+        var sumOfSquares: Float = 0
+        vDSP_svesq(vector, 1, &sumOfSquares, vDSP_Length(vector.count))
+        guard sumOfSquares > 0, sumOfSquares.isFinite else { return nil }
+        var scale = 1 / sumOfSquares.squareRoot()
+        var unit = [Float](repeating: 0, count: vector.count)
+        vDSP_vsmul(vector, 1, &scale, &unit, 1, vDSP_Length(vector.count))
+        return unit
+    }
+
+    /// Cosine similarity of every stored vector with `query`, as one
+    /// matrix-vector product, keeping the best `limit` above the floor.
+    func semanticMatches(_ query: [Float], limit: Int) -> [(id: String, similarity: Float)] {
+        guard !vectorIDs.isEmpty, query.count == dimension, let unit = Self.normalized(query) else { return [] }
+        var similarities = [Float](repeating: 0, count: vectorIDs.count)
+        vDSP_mmul(matrix, 1, unit, 1, &similarities, 1,
+                  vDSP_Length(vectorIDs.count), 1, vDSP_Length(dimension))
+        var best = TopK<(index: Int, similarity: Float)>(limit) { a, b in
+            a.similarity != b.similarity ? a.similarity > b.similarity : a.index < b.index
+        }
+        for (index, similarity) in similarities.enumerated() where similarity >= Self.minimumSimilarity {
+            best.insert((index, similarity))
+        }
+        return best.sorted().map { (id: vectorIDs[$0.index], similarity: $0.similarity) }
     }
 
     public var documentCount: Int { documents.count }
@@ -142,12 +181,7 @@ public struct HybridSearchIndex: Sendable {
         let keywordHits = lexical.search(query, limit: Self.candidates).map(\.id)
         var semanticHits: [String] = []
         if let queryVector {
-            semanticHits = vectors
-                .map { (id: $0.id, similarity: CosineSimilarity.score(queryVector, $0.vector)) }
-                .filter { $0.similarity >= Self.minimumSimilarity }
-                .sorted { $0.similarity > $1.similarity }
-                .prefix(Self.candidates)
-                .map(\.id)
+            semanticHits = semanticMatches(queryVector, limit: Self.candidates).map(\.id)
         }
 
         var fused: [String: (score: Double, kind: SearchHit.MatchKind)] = [:]
@@ -224,7 +258,10 @@ public enum SearchCorpus {
             let header = [article.title, article.summary].filter { !$0.isEmpty }.joined(separator: "\n")
             documents.append(SearchDocument(id: "article:\(article.id.uuidString)", articleID: article.id, text: header))
         }
-        for chunk in try context.fetch(FetchDescriptor<KnowledgeStore.Chunk>()) {
+        var chunks = FetchDescriptor<KnowledgeStore.Chunk>()
+        // One query for the articles instead of a fault per chunk.
+        chunks.relationshipKeyPathsForPrefetching = [\.article]
+        for chunk in try context.fetch(chunks) {
             guard let article = chunk.article else { continue }
             var vector: [Float]?
             if let data = chunk.vector, let embeddingModelID, chunk.embeddingModel == embeddingModelID {

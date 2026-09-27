@@ -47,6 +47,11 @@ Phase 5 hardening, in progress:
   - Chat messages are announced by speaker. A new chat says what its mode is for, and warns before you type if the provider has no key.
   - The reading list announces unread and starred items, and strategy items announce their kind.
   - The budget bar reads as an amount of the cap, the lock screen icons scale with text size, and the reader explains when only a headline was saved
+- [x] Performance:
+  - Semantic search is one matrix-vector product over unit-length vectors, and BM25 no longer re-sums document lengths. Both keep their top results in a bounded heap instead of sorting every candidate.
+  - Building the search index fetches chunks with their articles in one go.
+  - GraphRAG, `graph_neighbors` and the graph view fetch only the themes and edges they need, through the stored theme keys, instead of the whole graph.
+  - A 100,000-chunk search test and a 3,000-theme, 30,000-edge graph test print their timings to CI
 
 ## Requirements
 
