@@ -36,4 +36,70 @@ final class LinkParsingTests: XCTestCase {
         XCTAssertEqual(page.url, "https://example.com/notes")
         XCTAssertNil(page.repoFullName)
     }
+
+    @MainActor
+    func testApplyPastedURLKeepsSyncStateWhenTheRepoIsUnchanged() throws {
+        let container = try KnowledgeSchema.makeContainer(inMemory: true)
+        defer { _ = container }
+
+        let link = ProjectLink.fromPastedURL("https://github.com/AnubisRooster/SmartWard")
+        let sourceID = UUID()
+        link.sourceID = sourceID
+        link.etag = "abc"
+        link.defaultBranchSHA = "deadbeef"
+        link.lastSyncedAt = Date()
+        link.isPrivate = true
+
+        // A cosmetically different URL for the same repo shouldn't disturb sync state.
+        link.applyPastedURL("github.com/AnubisRooster/SmartWard.git")
+        XCTAssertEqual(link.repoFullName, "AnubisRooster/SmartWard")
+        XCTAssertEqual(link.sourceID, sourceID)
+        XCTAssertEqual(link.etag, "abc")
+        XCTAssertEqual(link.defaultBranchSHA, "deadbeef")
+        XCTAssertNotNil(link.lastSyncedAt)
+        XCTAssertTrue(link.isPrivate)
+    }
+
+    @MainActor
+    func testApplyPastedURLClearsSyncStateWhenTheRepoIdentityChanges() throws {
+        let container = try KnowledgeSchema.makeContainer(inMemory: true)
+        defer { _ = container }
+
+        let link = ProjectLink.fromPastedURL("https://github.com/AnubisRooster/SmartWard")
+        link.sourceID = UUID()
+        link.etag = "abc"
+        link.defaultBranchSHA = "deadbeef"
+        link.lastSyncedAt = Date()
+        link.isPrivate = true
+
+        link.applyPastedURL("https://github.com/AnubisRooster/OnDeviceKit")
+        XCTAssertEqual(link.kind, .githubRepo)
+        XCTAssertEqual(link.repoFullName, "AnubisRooster/OnDeviceKit")
+        XCTAssertEqual(link.url, "https://github.com/AnubisRooster/OnDeviceKit")
+        XCTAssertNil(link.sourceID, "would otherwise reuse the old repo's Source")
+        XCTAssertNil(link.etag)
+        XCTAssertNil(link.defaultBranchSHA)
+        XCTAssertNil(link.lastSyncedAt)
+        XCTAssertFalse(link.isPrivate)
+    }
+
+    @MainActor
+    func testApplyPastedURLSwitchesKindBothWays() throws {
+        let container = try KnowledgeSchema.makeContainer(inMemory: true)
+        defer { _ = container }
+
+        let toPlain = ProjectLink.fromPastedURL("https://github.com/AnubisRooster/SmartWard")
+        toPlain.sourceID = UUID()
+        toPlain.applyPastedURL("https://example.com/roadmap")
+        XCTAssertEqual(toPlain.kind, .url)
+        XCTAssertEqual(toPlain.url, "https://example.com/roadmap")
+        XCTAssertNil(toPlain.repoFullName)
+        XCTAssertNil(toPlain.sourceID)
+
+        let toRepo = ProjectLink.fromPastedURL("https://example.com/roadmap")
+        toRepo.applyPastedURL("github.com/AnubisRooster/SmartWard")
+        XCTAssertEqual(toRepo.kind, .githubRepo)
+        XCTAssertEqual(toRepo.repoFullName, "AnubisRooster/SmartWard")
+        XCTAssertEqual(toRepo.url, "https://github.com/AnubisRooster/SmartWard")
+    }
 }

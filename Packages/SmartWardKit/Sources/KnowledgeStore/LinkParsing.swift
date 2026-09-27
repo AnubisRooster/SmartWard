@@ -33,4 +33,30 @@ public extension ProjectLink {
         }
         return ProjectLink(kind: .url, url: trimmed)
     }
+
+    /// Re-parses a pasted URL into this existing link, the way `fromPastedURL`
+    /// builds a new one. If it now points at a different repo (or stops or
+    /// starts pointing at one), sync bookkeeping is cleared so the next sync
+    /// starts fresh instead of reusing the previous repo's `Source` under a
+    /// changed identity.
+    func applyPastedURL(_ url: String) {
+        let trimmed = url.trimmingCharacters(in: .whitespacesAndNewlines)
+        let fullName = Self.githubRepoFullName(from: trimmed)
+        if fullName != repoFullName {
+            sourceID = nil
+            etag = nil
+            defaultBranchSHA = nil
+            lastSyncedAt = nil
+            isPrivate = false
+        }
+        if let fullName {
+            kind = .githubRepo
+            self.url = "https://github.com/\(fullName)"
+            repoFullName = fullName
+        } else {
+            kind = .url
+            self.url = trimmed
+            repoFullName = nil
+        }
+    }
 }
