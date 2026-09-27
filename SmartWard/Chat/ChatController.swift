@@ -15,7 +15,11 @@ final class ChatController {
     private(set) var streamingText = ""
     private(set) var activity: [String] = []
     private(set) var isRunning = false
+    /// An action the strategist wants to take, waiting for Approve or Decline.
+    private(set) var pendingAction: ActionRequest?
     var errorMessage: String?
+
+    private var approval: CheckedContinuation<Bool, Never>?
 
     private let runner: StrategistRunner
 
@@ -58,6 +62,10 @@ final class ChatController {
                                                            context: context)
         let references = ledger.register(found)
         system += "\n\n" + ReferenceContext.guidance
+        let allowed = StrategistPrompt.allowedTools(for: conversation.mode)
+        if !allowed.isDisjoint(with: ["fetch_url", "add_source"]) {
+            system += "\n\n" + ActionTools.guidance
+        }
         if !references.isEmpty {
             system += "\n\n" + ReferenceContext.render(references)
         }
@@ -73,13 +81,17 @@ final class ChatController {
             },
             GraphNeighborsTool(context: context),
             OpenArticleTool(ledger: ledger, context: context),
+            FetchURLTool(fetcher: IngestController.shared.fetcher, ledger: ledger),
+            AddSourceTool(context: context),
         ]
         if let project {
             tools += [ProjectStateTool(project: project), RecordStrategyItemTool(project: project)]
         }
+        tools = tools.filter { allowed.contains($0.definition.name) }
 
         do {
-            let produced = try await runner.run(request: request, tools: tools) { event in
+            let produced = try await runner.run(request: request, tools: tools,
+                                                confirm: { action in await self.requestApproval(action) }) { event in
                 self.handle(event, provider: provider, conversation: conversation, context: context)
             }
             let reply = produced
@@ -106,6 +118,22 @@ final class ChatController {
         }
     }
 
+    /// Answers the pending action. Leaving the chat declines it.
+    func resolve(approved: Bool) {
+        guard let approval else { return }
+        self.approval = nil
+        pendingAction = nil
+        approval.resume(returning: approved)
+    }
+
+    private func requestApproval(_ action: ActionRequest) async -> Bool {
+        resolve(approved: false)
+        return await withCheckedContinuation { continuation in
+            approval = continuation
+            pendingAction = action
+        }
+    }
+
     /// What a reply was given, for its Sources list: text is trimmed to a teaser.
     static func referencesJSON(_ passages: [RetrievedPassage]) -> String? {
         guard !passages.isEmpty else { return nil }
@@ -125,6 +153,10 @@ final class ChatController {
             streamingText += text
         case .toolCall(let name, _):
             activity.append("Using \(name)…")
+        case .awaitingConfirmation(let action):
+            activity.append("Asking you: \(action.title)")
+        case .confirmationResolved(let action, let approved):
+            activity.append("\(approved ? "Approved" : "Declined"): \(action.title) (\(action.detail))")
         case .toolResult(let name, let result, let isError):
             activity.append(isError ? "\(name) failed: \(result)" : "\(name): \(result.prefix(120))")
         case .roundFinished(let response):

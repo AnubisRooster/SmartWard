@@ -27,6 +27,18 @@ public enum SourceEndpoint {
         }
     }
 
+    /// What a `Source` stores for `input`: arXiv and Hacker News keep what
+    /// was typed (their fetch URL is rebuilt from it), the rest keep the URL
+    /// that's fetched.
+    public static func storedAddress(kind: SourceKind, input: String) -> String? {
+        let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let endpoint = fetchURL(kind: kind, input: trimmed) else { return nil }
+        switch kind {
+        case .arxiv, .hn: return trimmed
+        default: return endpoint.absoluteString
+        }
+    }
+
     /// An http(s) URL with a dotted host; adds `https://` when the scheme is missing.
     public static func webURL(_ input: String) -> URL? {
         let text = input.contains("://") ? input : "https://" + input

@@ -11,6 +11,8 @@ public struct RetrievedPassage: Equatable, Sendable, Identifiable, Codable {
         case named(theme: String)
         /// It mentions `theme`, which the graph connects to `seed`.
         case connected(theme: String, seed: String)
+        /// A web page `fetch_url` read with your approval.
+        case fetched(url: String)
 
         public var description: String {
             switch self {
@@ -21,6 +23,8 @@ public struct RetrievedPassage: Equatable, Sendable, Identifiable, Codable {
                 return "Mentions \(theme), which you asked about"
             case .connected(let theme, let seed):
                 return "Mentions \(theme), connected to \(seed) in your graph"
+            case .fetched(let url):
+                return "Fetched from \(URL(string: url)?.host ?? url) with your approval"
             }
         }
 

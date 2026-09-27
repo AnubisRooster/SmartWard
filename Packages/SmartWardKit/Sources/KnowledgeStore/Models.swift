@@ -178,7 +178,7 @@ public final class Source {
     public var id: UUID = UUID()
     /// A `SourceKind` raw value; read it through `sourceKind`.
     public var kind: String = "rss"
-    /// manual | onboarding | dependency_radar
+    /// manual | onboarding | dependency_radar | strategist
     public var origin: String = "manual"
     public var url: String = ""
     public var title: String = ""

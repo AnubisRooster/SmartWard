@@ -2,6 +2,7 @@ import SwiftUI
 import SwiftData
 import KnowledgeStore
 import Pipeline
+import StrategistCore
 
 struct ConversationView: View {
     let conversation: Conversation
@@ -34,6 +35,12 @@ struct ConversationView: View {
                         MessageRow(role: "assistant",
                                    text: controller.streamingText.isEmpty ? "…" : controller.streamingText)
                             .id("streaming")
+                        if let action = controller.pendingAction {
+                            ActionConfirmationCard(action: action) { approved in
+                                controller.resolve(approved: approved)
+                            }
+                            .id("confirmation")
+                        }
                     }
                     if let error = controller.errorMessage {
                         Label(error, systemImage: "exclamationmark.triangle")
@@ -46,6 +53,9 @@ struct ConversationView: View {
             .onChange(of: controller.streamingText) { _, _ in
                 proxy.scrollTo("streaming", anchor: .bottom)
             }
+            .onChange(of: controller.pendingAction) { _, action in
+                if action != nil { proxy.scrollTo("confirmation", anchor: .bottom) }
+            }
             .onChange(of: messages.count) { _, _ in
                 if let last = messages.last { proxy.scrollTo(last.id, anchor: .bottom) }
             }
@@ -53,6 +63,7 @@ struct ConversationView: View {
         .safeAreaInset(edge: .bottom) { composer }
         .navigationTitle(conversation.title.isEmpty ? "New chat" : conversation.title)
         .navigationBarTitleDisplayMode(.inline)
+        .onDisappear { controller.resolve(approved: false) }
         .navigationDestination(for: Article.self) { article in
             ArticleReaderView(article: article)
         }
@@ -75,6 +86,34 @@ struct ConversationView: View {
         .padding(.horizontal)
         .padding(.vertical, 8)
         .background(.bar)
+    }
+}
+
+/// Asks before the strategist fetches a page or changes your library (PLAN §5.7).
+private struct ActionConfirmationCard: View {
+    let action: ActionRequest
+    let onResolve: (Bool) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label(action.title, systemImage: action.tool == "fetch_url" ? "globe" : "plus.circle")
+                .font(.subheadline.weight(.semibold))
+            Text(action.detail)
+                .font(.caption.monospaced())
+                .foregroundStyle(.secondary)
+                .textSelection(.enabled)
+            HStack {
+                Button("Approve") { onResolve(true) }
+                    .buttonStyle(.borderedProminent)
+                Button("Decline", role: .cancel) { onResolve(false) }
+                    .buttonStyle(.bordered)
+            }
+            .controlSize(.small)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
+        .accessibilityElement(children: .contain)
     }
 }
 
@@ -139,9 +178,16 @@ struct SourcesList: View {
                 .font(.caption.weight(.medium))
                 .foregroundStyle(.primary)
                 .lineLimit(2)
-            Label(passage.why.description,
-                  systemImage: passage.why.isGraphHop ? "point.3.connected.trianglepath.dotted" : "text.magnifyingglass")
+            Label(passage.why.description, systemImage: Self.systemImage(for: passage.why))
                 .font(.caption2)
+        }
+    }
+
+    static func systemImage(for why: RetrievedPassage.Why) -> String {
+        switch why {
+        case .fetched: return "globe"
+        case .connected: return "point.3.connected.trianglepath.dotted"
+        case .direct, .named: return "text.magnifyingglass"
         }
     }
 

@@ -116,6 +116,24 @@ public enum StrategistPrompt {
     to your work. To start: what are you building right now? Name each project and what you want it to do.
     """
 
+    /// Tools each mode may use (PLAN §5.5: a mode is a prompt profile plus a
+    /// tool allow-list). Critique and weekly review don't add sources; the
+    /// onboarding interview uses no tools.
+    public static func allowedTools(for mode: ConversationMode) -> Set<String> {
+        let reading: Set<String> = ["search_corpus", "graph_neighbors", "open_article"]
+        let project: Set<String> = ["list_project_state", "record_strategy_item", "propose_brief_update"]
+        switch mode {
+        case .brainstorm, .researchPlan:
+            return reading.union(project).union(["fetch_url", "add_source"])
+        case .critique:
+            return reading.union(project).union(["fetch_url"])
+        case .weeklyReview:
+            return reading.union(project)
+        case .onboarding:
+            return []
+        }
+    }
+
     static func grounding(hasProject: Bool) -> String {
         var rules = """
         Grounding: separate what comes from the user's own records from your general knowledge, and never invent \
