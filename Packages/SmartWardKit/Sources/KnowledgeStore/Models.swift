@@ -160,10 +160,23 @@ public final class ReadingSignal {
 
 // MARK: - Sources & articles
 
+public enum SourceKind: String, CaseIterable, Codable, Sendable {
+    case rss, arxiv, hfPapers = "hf_papers", hn, githubReleases = "github_releases", githubRepo = "github_repo", site, manual
+
+    /// Kinds fetched on refresh. Linked repos sync through `RepoSync`, and
+    /// manual items arrive from the share extension.
+    public var isPolled: Bool {
+        switch self {
+        case .rss, .arxiv, .hfPapers, .hn, .githubReleases, .site: return true
+        case .githubRepo, .manual: return false
+        }
+    }
+}
+
 @Model
 public final class Source {
     public var id: UUID = UUID()
-    /// rss | arxiv | hf_papers | hn | github_releases | github_repo | site | manual
+    /// A `SourceKind` raw value; read it through `sourceKind`.
     public var kind: String = "rss"
     /// manual | onboarding | dependency_radar
     public var origin: String = "manual"
@@ -172,10 +185,17 @@ public final class Source {
     public var etag: String?
     public var lastModified: String?
     public var lastFetchedAt: Date?
+    /// The last fetch's failure, shown in the Sources list; cleared on success.
+    public var lastError: String?
     public var isEnabled: Bool = true
 
     @Relationship(deleteRule: .nullify, inverse: \Article.source)
     public var articles: [Article]? = []
+
+    public var sourceKind: SourceKind {
+        get { SourceKind(rawValue: kind) ?? .rss }
+        set { kind = newValue.rawValue }
+    }
 
     public init(kind: String, url: String, title: String = "", origin: String = "manual") {
         self.kind = kind
@@ -196,6 +216,8 @@ public final class Article {
     public var canonicalURL: String = ""
     public var title: String = ""
     public var byline: String?
+    /// Short plain-text teaser for lists (a feed's description or an abstract).
+    public var summary: String = ""
     public var cleanedText: String = ""
     public var contentHash: String = ""
     public var publishedAt: Date?

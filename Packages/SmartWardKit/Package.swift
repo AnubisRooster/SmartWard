@@ -18,6 +18,8 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/AnubisRooster/OnDeviceKit", branch: "main"),
+        // HTML parsing for article extraction (MIT).
+        .package(url: "https://github.com/scinfu/SwiftSoup.git", from: "2.7.0"),
     ],
     targets: [
         .target(name: "KnowledgeStore"),
@@ -26,7 +28,11 @@ let package = Package(
                     "KnowledgeStore",
                     .product(name: "BYOKLLMKit", package: "OnDeviceKit"),
                 ]),
-        .target(name: "IngestKit", dependencies: ["KnowledgeStore"]),
+        .target(name: "IngestKit",
+                dependencies: [
+                    "KnowledgeStore",
+                    .product(name: "SwiftSoup", package: "SwiftSoup"),
+                ]),
         .target(name: "AppLock",
                 dependencies: [
                     .product(name: "PINLockKit", package: "OnDeviceKit"),

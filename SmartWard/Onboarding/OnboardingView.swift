@@ -206,6 +206,9 @@ struct OnboardingView: View {
         do {
             try proposal.apply(to: context)
             completed = true
+            // Kick-off (PLAN §3.3 D7): the first fetch of the confirmed sources.
+            let context = context
+            Task { await IngestController.shared.refreshAll(context: context) }
         } catch {
             errorMessage = error.localizedDescription
         }
