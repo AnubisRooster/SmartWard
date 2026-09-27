@@ -1,7 +1,7 @@
 # Graph Report - SmartWard  (2026-09-27)
 
 ## Corpus Check
-- Large corpus: 146 files · ~567,723 words. Semantic extraction will be expensive (many Claude tokens). Consider running on a subfolder.
+- Large corpus: 146 files · ~570,914 words. Semantic extraction will be expensive (many Claude tokens). Consider running on a subfolder.
 
 ## Summary
 - 2682 nodes · 6901 edges · 156 communities (151 shown, 5 thin omitted)
@@ -187,8 +187,8 @@
   SmartWard/Intents/SmartWardIntents.swift → Packages/SmartWardKit/Sources/Pipeline/PerfTrace.swift
 - `.parameterSummary` --calls--> `Summary`  [INFERRED]
   SmartWard/Intents/SmartWardIntents.swift → Packages/SmartWardKit/Sources/Pipeline/PerfTrace.swift
-- `SourceIntake (shared validation for adding sources)` --implements--> `add_source Tool`  [INFERRED]
-  CLAUDE.md → README.md
+- `AppLockController` --calls--> `BiometricService`  [INFERRED]
+  SmartWard/Lock/AppLockController.swift → Packages/SmartWardKit/Sources/AppLock/AppLock.swift
 
 ## Import Cycles
 - None detected.
@@ -812,7 +812,7 @@ Nodes (4): AppStore, Error, ModelContainer, Result
 
 ## Ambiguous Edges - Review These
 - `Scale Performance Tests (100k chunks, 3k themes)` → `Device Measurement (Instruments signposts)`  [AMBIGUOUS]
-  README.md · relation: conceptually_related_to
+  /Users/mikefink/Downloads/SmartWard/README.md · relation: conceptually_related_to
 
 ## Knowledge Gaps
 - **279 isolated node(s):** `PackageDescription`, `unlocked`, `needsPIN`, `unlocked`, `incorrect` (+274 more)
