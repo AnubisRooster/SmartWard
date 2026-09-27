@@ -24,6 +24,7 @@ struct ReadingView: View {
     @State private var pipeline = PipelineController.shared
     @State private var ingest = IngestController.shared
     @State private var showingSources = false
+    @State private var query = ""
 
     private var reading: [Article] {
         articles.filter { $0.source?.sourceKind != .githubRepo }
@@ -52,60 +53,17 @@ struct ReadingView: View {
 
     var body: some View {
         NavigationStack {
-            List {
-                ForEach(visible) { article in
-                    NavigationLink(value: article) {
-                        ArticleRow(article: article)
-                    }
-                    .swipeActions(edge: .leading) {
-                        Button(article.isRead ? "Unread" : "Read",
-                               systemImage: article.isRead ? "circle.fill" : "checkmark.circle") {
-                            article.isRead.toggle()
-                        }
-                        .tint(.blue)
-                    }
-                    .swipeActions(edge: .trailing) {
-                        Button("Dismiss", systemImage: "xmark") { dismiss(article) }
-                            .tint(.gray)
-                        Button(article.isStarred ? "Unstar" : "Star",
-                               systemImage: article.isStarred ? "star.slash" : "star") { toggleStar(article) }
-                            .tint(.yellow)
-                    }
-                }
-                if filter == .unread, filteredOutCount > 0 {
-                    Button {
-                        showingFiltered.toggle()
-                    } label: {
-                        Label(showingFiltered ? "Hide off-topic items" : "Show \(filteredOutCount) off-topic items",
-                              systemImage: showingFiltered ? "eye.slash" : "line.3.horizontal.decrease.circle")
-                            .font(.subheadline)
-                    }
-                    .listRowSeparator(.hidden)
-                }
-                if let reason = pipeline.unavailableReason {
-                    Label(reason, systemImage: "exclamationmark.triangle")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                        .listRowSeparator(.hidden)
+            Group {
+                if query.isEmpty {
+                    readingList
+                } else {
+                    SearchResultsView(query: query)
                 }
             }
-            .listStyle(.plain)
-            .safeAreaInset(edge: .top) {
-                Picker("Show", selection: $filter) {
-                    ForEach(Filter.allCases) { Text($0.rawValue).tag($0) }
-                }
-                .pickerStyle(.segmented)
-                .padding(.horizontal)
-                .padding(.bottom, 8)
-                .background(.bar)
-            }
-            .overlay { emptyState }
+            .searchable(text: $query, prompt: "Search your library")
             .navigationTitle("Reading")
             .navigationDestination(for: Article.self) { article in
                 ArticleReaderView(article: article)
-            }
-            .refreshable {
-                await ingest.refreshAll(context: context)
             }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -130,6 +88,60 @@ struct ReadingView: View {
             .sheet(isPresented: $showingSources) {
                 SourcesView()
             }
+        }
+    }
+
+    private var readingList: some View {
+        List {
+            ForEach(visible) { article in
+                NavigationLink(value: article) {
+                    ArticleRow(article: article)
+                }
+                .swipeActions(edge: .leading) {
+                    Button(article.isRead ? "Unread" : "Read",
+                           systemImage: article.isRead ? "circle.fill" : "checkmark.circle") {
+                        article.isRead.toggle()
+                    }
+                    .tint(.blue)
+                }
+                .swipeActions(edge: .trailing) {
+                    Button("Dismiss", systemImage: "xmark") { dismiss(article) }
+                        .tint(.gray)
+                    Button(article.isStarred ? "Unstar" : "Star",
+                           systemImage: article.isStarred ? "star.slash" : "star") { toggleStar(article) }
+                        .tint(.yellow)
+                }
+            }
+            if filter == .unread, filteredOutCount > 0 {
+                Button {
+                    showingFiltered.toggle()
+                } label: {
+                    Label(showingFiltered ? "Hide off-topic items" : "Show \(filteredOutCount) off-topic items",
+                          systemImage: showingFiltered ? "eye.slash" : "line.3.horizontal.decrease.circle")
+                        .font(.subheadline)
+                }
+                .listRowSeparator(.hidden)
+            }
+            if let reason = pipeline.unavailableReason {
+                Label(reason, systemImage: "exclamationmark.triangle")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .listRowSeparator(.hidden)
+            }
+        }
+        .listStyle(.plain)
+        .safeAreaInset(edge: .top) {
+            Picker("Show", selection: $filter) {
+                ForEach(Filter.allCases) { Text($0.rawValue).tag($0) }
+            }
+            .pickerStyle(.segmented)
+            .padding(.horizontal)
+            .padding(.bottom, 8)
+            .background(.bar)
+        }
+        .overlay { emptyState }
+        .refreshable {
+            await ingest.refreshAll(context: context)
         }
     }
 
