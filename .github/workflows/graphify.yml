@@ -36,13 +36,11 @@ jobs:
         # local tool: uv tool upgrade graphifyy
         run: pip install "graphifyy[gemini]==0.9.70"
 
-      - name: Restore graphify state
-        uses: actions/cache@v4
-        with:
-          path: graphify-out
-          key: graphify-${{ github.event.repository.name }}-${{ github.sha }}
-          restore-keys: graphify-${{ github.event.repository.name }}-
-
+      # No actions/cache here on purpose. Caching graphify-out across commits
+      # restores the AST cache with it, so a run can emit last commit's node
+      # set under this commit's graphify version. The tracked semantic cache is
+      # what makes reruns cheap, and the AST pass over 121 Swift files is fast
+      # enough to redo from scratch every time.
       - name: Build knowledge graph
         # Code is extracted structurally, so this succeeds with no API key. The
         # semantic pass over docs/PLAN.md and the README reads the tracked

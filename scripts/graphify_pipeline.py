@@ -111,10 +111,39 @@ def main() -> int:
     prebuilt = next((p for p in candidates if p.exists()), None)
     if prebuilt:
         sem = json.loads(prebuilt.read_text(encoding="utf-8"))
+
+        def relativize(obj):
+            """Strip the absolute checkout prefix from source_file.
+
+            The agent-assisted /graphify flow records absolute paths, which
+            would bake the author's home directory into the committed graph and
+            make the output differ per machine. Normalise to repo-relative.
+            """
+            changed = 0
+            for item in obj:
+                sf = item.get("source_file")
+                if not isinstance(sf, str):
+                    continue
+                try:
+                    rel = str(Path(sf).resolve().relative_to(ROOT)).replace("\\", "/")
+                except ValueError:
+                    continue
+                if rel != sf:
+                    item["source_file"] = rel
+                    changed += 1
+            return changed
+
+        fixed = (
+            relativize(sem.get("nodes", []))
+            + relativize(sem.get("edges", []))
+            + relativize(sem.get("hyperedges", []))
+        )
         print(
             f"Semantic (pre-built): {len(sem.get('nodes', []))} nodes, "
             f"{len(sem.get('edges', []))} edges from {prebuilt.name}"
         )
+        if fixed:
+            print(f"  relativized {fixed} absolute source_file path(s)")
         # A cache older than the prose it describes silently drops new design
         # vocabulary, so say so rather than letting the graph look complete.
         newer = [f for f in doc_files if Path(f).exists() and Path(f).stat().st_mtime > prebuilt.stat().st_mtime]
