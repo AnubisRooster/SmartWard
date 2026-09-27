@@ -1,8 +1,7 @@
 # Graph Report - SmartWard  (2026-09-27)
 
 ## Corpus Check
-- 128 files · ~107,051 words
-- Verdict: corpus is large enough that graph structure adds value.
+- Large corpus: 146 files · ~565,386 words. Semantic extraction will be expensive (many Claude tokens). Consider running on a subfolder.
 
 ## Summary
 - 2653 nodes · 6843 edges · 132 communities (130 shown, 2 thin omitted)

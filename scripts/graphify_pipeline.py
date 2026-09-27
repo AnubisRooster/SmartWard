@@ -96,20 +96,34 @@ def main() -> int:
 
     # ---- Part B: semantic extraction for docs ----
     # Three paths, in priority order:
-    #   1. A pre-built graphify-out/.graphify_semantic.json, produced by the
-    #      agent-assisted /graphify flow. This is how a local run gets the
-    #      design vocabulary out of docs/PLAN.md that AST cannot see.
-    #   2. Gemini, when GEMINI_API_KEY is set (what CI uses).
+    #   1. A pre-built semantic cache. The tracked copy in
+    #      docs/graphify/semantic-extraction.json is checked first so that CI
+    #      and any fresh clone reproduce the same graph with no key at all.
+    #      The copy in graphify-out/ is the local working file that the
+    #      agent-assisted /graphify flow writes. This is what puts the design
+    #      vocabulary in docs/PLAN.md into the graph, which AST cannot see.
+    #   2. Gemini, when GEMINI_API_KEY is set. Use this to refresh the cache
+    #      after the prose changes, then commit the new cache.
     #   3. Neither -> code-only graph, which is still useful and free.
     sem = {"nodes": [], "edges": [], "hyperedges": [], "input_tokens": 0, "output_tokens": 0}
-    prebuilt = OUT / ".graphify_semantic.json"
     doc_files = [f for cat in ("document", "paper") for f in result["files"].get(cat, [])]
-    if prebuilt.exists():
+    candidates = (ROOT / "docs/graphify/semantic-extraction.json", OUT / ".graphify_semantic.json")
+    prebuilt = next((p for p in candidates if p.exists()), None)
+    if prebuilt:
         sem = json.loads(prebuilt.read_text(encoding="utf-8"))
         print(
             f"Semantic (pre-built): {len(sem.get('nodes', []))} nodes, "
             f"{len(sem.get('edges', []))} edges from {prebuilt.name}"
         )
+        # A cache older than the prose it describes silently drops new design
+        # vocabulary, so say so rather than letting the graph look complete.
+        newer = [f for f in doc_files if Path(f).exists() and Path(f).stat().st_mtime > prebuilt.stat().st_mtime]
+        if newer:
+            print(
+                f"NOTE: {len(newer)} doc file(s) newer than the semantic cache, e.g. "
+                f"{Path(sorted(newer)[0]).name}. Re-run the /graphify flow (or set "
+                "GEMINI_API_KEY) and commit docs/graphify/semantic-extraction.json."
+            )
     elif doc_files and os.environ.get("GEMINI_API_KEY"):
         from graphify.llm import extract_corpus_parallel
 

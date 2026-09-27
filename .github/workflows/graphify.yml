@@ -42,9 +42,10 @@ jobs:
 
       - name: Build knowledge graph
         # Code is extracted structurally, so this succeeds with no API key. The
-        # semantic pass over docs/PLAN.md and the README only runs when
-        # GEMINI_API_KEY is present, which is why the local build ships a
-        # pre-built graphify-out/.graphify_semantic.json instead.
+        # semantic pass over docs/PLAN.md and the README reads the tracked
+        # cache at docs/graphify/semantic-extraction.json, so the graph here is
+        # the same 2,653-node graph a local run produces. Set GEMINI_API_KEY as
+        # a repository secret to regenerate that cache instead of reusing it.
         run: python scripts/graphify_pipeline.py
 
       - name: Export interactive HTML
