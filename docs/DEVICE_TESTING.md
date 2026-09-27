@@ -90,4 +90,3 @@ Use a Release build. Debug builds are several times slower.
 3. Ask for a brief suggestion and accept it.
 4. Set the daily budget to $0.25, then chat until it's spent. Background extraction should stay on-device until midnight.
 5. Export JSON, GraphML and Markdown, and open each file from Files.
-# hooks verification 1790550941
