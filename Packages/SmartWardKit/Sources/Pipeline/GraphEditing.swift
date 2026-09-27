@@ -144,21 +144,32 @@ public struct GraphSnapshot: Equatable, Sendable {
     /// Below this decayed strength a theme is dormant: hidden unless asked for.
     public static let dormantStrength = 0.25
 
+    /// - Parameter strengths: a cache kept between views; without one,
+    ///   strengths are computed in one pass over the mentions.
     @MainActor
     public static func build(context: ModelContext, scope: Scope = .all, limit: Int = 80,
-                             includeDormant: Bool = false, now: Date = Date()) throws -> GraphSnapshot {
+                             includeDormant: Bool = false, now: Date = Date(),
+                             strengths: ThemeStrengthCache? = nil) throws -> GraphSnapshot {
         var nodeFetch = FetchDescriptor<ThemeNode>()
-        // Strength needs every mention; load them in one go rather than per node.
-        nodeFetch.relationshipKeyPathsForPrefetching = [\.mentions]
+        if scope != .all {
+            // Scopes walk each theme's mentions; load them in one go.
+            nodeFetch.relationshipKeyPathsForPrefetching = [\.mentions]
+        }
         let allNodes = try context.fetch(nodeFetch)
         let inScope = try scopedIDs(scope, nodes: allNodes, context: context, now: now)
+        let scores: [UUID: ThemeStrengths.Entry]
+        if let strengths {
+            scores = try strengths.strengths(context: context, now: now)
+        } else {
+            scores = try ThemeStrengths.compute(context: context, now: now)
+        }
 
         var nodes: [Node] = []
         for node in allNodes where inScope?.contains(node.id) ?? true {
-            let strength = ThemeStrength.score(of: node, now: now)
-            let count = node.mentions?.count ?? 0
-            guard count > 0, includeDormant || strength >= dormantStrength else { continue }
-            nodes.append(Node(id: node.id, label: node.canonicalLabel, type: node.type, strength: strength, mentions: count))
+            guard let score = scores[node.id], score.mentions > 0,
+                  includeDormant || score.strength >= dormantStrength else { continue }
+            nodes.append(Node(id: node.id, label: node.canonicalLabel, type: node.type,
+                              strength: score.strength, mentions: score.mentions))
         }
         nodes.sort { $0.strength != $1.strength ? $0.strength > $1.strength : $0.label < $1.label }
         nodes = Array(nodes.prefix(limit))

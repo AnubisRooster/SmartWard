@@ -52,6 +52,10 @@ Phase 5 hardening, in progress:
   - Building the search index fetches chunks with their articles in one go.
   - GraphRAG, `graph_neighbors` and the graph view fetch only the themes and edges they need, through the stored theme keys, instead of the whole graph.
   - A 100,000-chunk search test and a 3,000-theme, 30,000-edge graph test print their timings to CI
+- [x] Device measurement:
+  - A developer screen can load a marked, removable 100,000-chunk sample library and run the GraphRAG latency check against the 500 ms target. Timings are signposts you can see in Instruments. See [docs/DEVICE_TESTING.md](docs/DEVICE_TESTING.md).
+  - Theme strengths are cached between graph views and rescaled for decay rather than recomputed.
+  - The search index takes new and removed articles in place instead of rebuilding
 
 ## Requirements
 

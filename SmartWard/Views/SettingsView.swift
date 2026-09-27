@@ -37,6 +37,13 @@ struct SettingsView: View {
                 } footer: {
                     Text("Re-runs the onboarding interview. Existing projects are kept; new links, sources and topics are merged in.")
                 }
+                if DeveloperSettings.isEnabled {
+                    Section {
+                        NavigationLink("Developer") { DeveloperView() }
+                    } footer: {
+                        Text("Sample library and latency check. Shown in Debug builds only.")
+                    }
+                }
                 Section("About") {
                     LabeledContent("Version",
                                    value: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "–")

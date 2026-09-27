@@ -45,6 +45,7 @@ final class PipelineController {
                                     budget: BudgetSettings.current)
         do {
             lastReport = try await runner.run(context: context, until: Date().addingTimeInterval(budget))
+            SearchController.shared.markStale()
         } catch {
             unavailableReason = error.localizedDescription
         }
