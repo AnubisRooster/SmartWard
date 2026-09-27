@@ -88,6 +88,7 @@ struct ProjectDetailView: View {
     @Bindable var project: Project
     @Environment(\.modelContext) private var context
     @State private var newLink = ""
+    @State private var editingLink: ProjectLink?
 
     private var links: [ProjectLink] {
         (project.links ?? []).sorted { $0.url < $1.url }
@@ -104,8 +105,13 @@ struct ProjectDetailView: View {
             StrategyItemsSection(project: project)
             Section {
                 ForEach(links) { link in
-                    Label(link.repoFullName ?? link.url,
-                          systemImage: link.kind == .githubRepo ? "chevron.left.forwardslash.chevron.right" : "link")
+                    Button {
+                        editingLink = link
+                    } label: {
+                        Label(link.repoFullName ?? link.url,
+                              systemImage: link.kind == .githubRepo ? "chevron.left.forwardslash.chevron.right" : "link")
+                    }
+                    .foregroundStyle(.primary)
                 }
                 .onDelete { offsets in
                     let current = links
@@ -125,11 +131,14 @@ struct ProjectDetailView: View {
             } header: {
                 Text("Links")
             } footer: {
-                Text("GitHub repo links are recognized automatically and can be synced below.")
+                Text("GitHub repo links are recognized automatically and can be synced below. Tap a link to edit it.")
             }
             GitHubProjectSection(project: project)
         }
         .navigationTitle(project.name)
+        .sheet(item: $editingLink) { link in
+            EditLinkView(link: link)
+        }
     }
 
     private func addLink() {
@@ -137,5 +146,52 @@ struct ProjectDetailView: View {
         guard !trimmed.isEmpty else { return }
         project.links?.append(ProjectLink.fromPastedURL(trimmed))
         newLink = ""
+    }
+}
+
+/// Editing a link re-parses its URL the same way pasting a new one does: it
+/// can turn a plain URL into a recognized GitHub repo (or the reverse), and
+/// changing which repo it points to clears that link's sync bookkeeping
+/// (`ProjectLink.applyPastedURL`) so the next sync doesn't reuse the
+/// previous repo's `Source`.
+struct EditLinkView: View {
+    @Bindable var link: ProjectLink
+    @Environment(\.dismiss) private var dismiss
+    @State private var text: String
+
+    init(link: ProjectLink) {
+        self.link = link
+        _text = State(initialValue: link.url)
+    }
+
+    private var trimmed: String { text.trimmingCharacters(in: .whitespacesAndNewlines) }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                TextField("URL", text: $text)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .keyboardType(.URL)
+                if link.kind == .githubRepo, let synced = link.lastSyncedAt {
+                    LabeledContent("Last synced") {
+                        Text(synced, style: .relative).foregroundStyle(.secondary)
+                    }
+                }
+            }
+            .navigationTitle("Edit link")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        link.applyPastedURL(trimmed)
+                        dismiss()
+                    }
+                    .disabled(trimmed.isEmpty)
+                }
+            }
+        }
     }
 }
