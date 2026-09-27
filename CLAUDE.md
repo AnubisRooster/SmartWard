@@ -7,7 +7,9 @@ Local-first iOS research strategist. The source of truth for requirements, desig
 - `SmartWard/`: the iOS app (SwiftUI). The Xcode project is generated from `project.yml` by XcodeGen and is not committed.
 - `Packages/SmartWardKit/`: local SPM package. Keep logic here, not in views, so `swift test` covers it without a simulator.
   - `KnowledgeStore`: the SwiftData models, `KnowledgeSchema`, `ContextPolicy` and `ThemeStrength`.
-  - `IngestKit`: the GET-only `GitHubClient`, `GitHubDeviceFlow`, `GitHubTokenStore` (device-only Keychain), `ManifestParser`, and `RepoSync` (repo docs → articles, dependency radar).
+  - `IngestKit`: source ingestion and GitHub.
+    - Sources: `SourceEndpoint` (what a user typed → the URL fetched), `SourceFetcher` (per-kind adapters), `FeedParser` (RSS/Atom/RDF), `ArticleExtractor` (SwiftSoup; HTML → clean text), `PolitenessGate` (rate limits, backoff, robots.txt), `FeedIngest` (dedupe and store).
+    - GitHub: the GET-only `GitHubClient`, `GitHubDeviceFlow`, `GitHubTokenStore` (device-only Keychain), `ManifestParser`, and `RepoSync` (repo docs → articles, dependency radar).
   - `AppLock`: `AppLockPolicy` (when to lock), `AppLockCoordinator` (biometrics first, PIN fallback, re-baseline after enrollment changes), and `PINRules`. It sits on OnDeviceKit's `PINLockKit` and `BiometricLockKit`.
   - `StrategistCore`: the tool-calling loop (`StrategistRunner`), mode prompts, history budgeting, and project tools. It depends on OnDeviceKit's `BYOKLLMKit`.
 - Shared, domain-agnostic code belongs in [OnDeviceKit](https://github.com/AnubisRooster/OnDeviceKit), not here.
@@ -19,6 +21,7 @@ Local-first iOS research strategist. The source of truth for requirements, desig
 - **Graph strength and weight are derived**, not stored counters: `Mention` and `ThemeEdge` rows are append-only, and `ThemeStrength` computes strength from them.
 - API keys and tokens live only in the Keychain, never in `UserDefaults`, SwiftData or backups.
 - SmartWard never writes to GitHub. `GitHubClient` issues GET requests only; the two device-flow auth calls to github.com are the only exceptions. Only docs and manifests are synced, never source code. A private repo's articles are always `localOnly`.
+- Every ingestion request goes through `PolitenessGate` (truthful User-Agent, per-host rate limit, backoff; robots.txt for web pages), and all fetched HTML goes through `ArticleExtractor`, which drops hidden text, comments and invisible characters before anything is stored. Articles are deduped by `CanonicalURL` and content hash across all sources.
 - Every strategist turn must end: the runner's last round forces `toolChoice = .none`, and tool failures go back to the model as error results instead of aborting the turn.
 - Enum-backed model fields store a raw `String` with a literal default and expose a typed computed property that falls back on unknown values.
 

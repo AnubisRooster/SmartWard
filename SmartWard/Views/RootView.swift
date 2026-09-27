@@ -12,6 +12,9 @@ struct RootView: View {
                                systemImage: "sun.max",
                                message: "Your digest of new research, clustered by theme, lands here once sources are connected.")
             }
+            Tab("Reading", systemImage: "newspaper") {
+                ReadingView()
+            }
             Tab("Chat", systemImage: "bubble.left.and.bubble.right") {
                 ChatListView()
             }
