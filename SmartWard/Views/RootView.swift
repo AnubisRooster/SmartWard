@@ -2,6 +2,8 @@ import SwiftUI
 
 struct RootView: View {
     @AppStorage("onboarding.completed") private var onboardingCompleted = false
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var lock = AppLockController.shared
 
     var body: some View {
         TabView {
@@ -23,6 +25,16 @@ struct RootView: View {
         .fullScreenCover(isPresented: Binding(get: { !onboardingCompleted },
                                               set: { onboardingCompleted = !$0 })) {
             OnboardingView()
+        }
+        .overlay {
+            if lock.isLocked {
+                LockScreen()
+            } else if lock.isObscured {
+                PrivacyCover()
+            }
+        }
+        .onChange(of: scenePhase, initial: true) { _, phase in
+            lock.handle(phase)
         }
     }
 }

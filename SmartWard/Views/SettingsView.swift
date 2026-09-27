@@ -17,6 +17,7 @@ struct SettingsView: View {
                     Text("Keys are stored only in this device's Keychain. An OpenRouter key alone reaches Anthropic, OpenAI, xAI and open models.")
                 }
                 GitHubSettingsSection()
+                SecuritySettingsSection()
                 Section {
                     Button("Run setup again") { onboardingCompleted = false }
                 } header: {
