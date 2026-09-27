@@ -35,6 +35,7 @@ brainstorming partner on your own projects. It uses your own API keys (BYOK).*
 |---|---|---|
 | B1 | **GraphRAG is built in SmartWard over the SwiftData graph**, not by adding an injectable entity index to ODK's GraphRetrievalKit (C3) | GraphRetrievalKit indexes its own `RetrievalKit` chunks through `KnowledgeGraphExtractor`; SmartWard's chunks, mentions and edges already live in SwiftData, so a retriever over those tables is simpler and avoids a second copy. GraphKit is still used for export (Phase 5) and GraphViewKit for the graph view |
 | B2 | **Entity resolution never auto-merges names whose version tokens differ** ("GPT-4" vs "GPT-4o", "Llama 3" vs "Llama 3.1") | Short technical names embed almost identically across versions; merging them would be the main source of false merges (§7 gate). They become review suggestions instead |
+| B4 | **The graph view is drawn natively in SwiftUI** (force-directed layout + `Canvas`) instead of GraphViewKit's WebView | GraphViewKit's page hard-codes the therapy vocabulary (legend and colours for emotions, beliefs, events). A native view needs no web content, works offline, and follows the app's styling and accessibility. GraphKit stays the export path |
 | B3 | **Extraction routing** | Articles: T1 first, T2 fallback. Public linked-repo docs and conversation turns: T2 first (D2), T1 fallback. Private-repo content and off-the-record chats: T1 only (D5), and they wait rather than fall back |
 
 ### v1 → v2
