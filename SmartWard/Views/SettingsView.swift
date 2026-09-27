@@ -17,6 +17,11 @@ struct SettingsView: View {
                 } footer: {
                     Text("Keys are stored only in this device's Keychain. An OpenRouter key alone reaches Anthropic, OpenAI, xAI and open models.")
                 }
+                Section {
+                    NavigationLink("Usage & budget") { UsageView() }
+                } footer: {
+                    Text("What your provider has cost, a daily cap for background work, and model fallback.")
+                }
                 ReadingSettingsSection()
                 KnowledgeGraphSettingsSection()
                 GitHubSettingsSection()

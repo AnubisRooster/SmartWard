@@ -5,6 +5,7 @@ import FoundationModels
 import BYOKLLMKit
 import KnowledgeStore
 import Pipeline
+import StrategistCore
 
 /// T1 extraction (PLAN §5.3): Apple Foundation Models with guided
 /// generation, on-device. The default for articles, and the only tier that
@@ -62,6 +63,7 @@ enum ExtractionSettings {
 
     /// Your provider may extract conversations and public repo docs unless
     /// you turned it off; defaults to the provider and model you chat with.
+    @MainActor
     static func byokExtractor() -> BYOKExtractor? {
         let defaults = UserDefaults.standard
         if defaults.object(forKey: useProviderKey) != nil, !defaults.bool(forKey: useProviderKey) { return nil }
@@ -71,10 +73,12 @@ enum ExtractionSettings {
         }
         let chosen = defaults.string(forKey: modelKey)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let fallback = defaults.string(forKey: "chat.lastModel") ?? provider.exampleModelID
-        return BYOKExtractor(client: LLMService.shared, provider: provider, model: chosen.isEmpty ? fallback : chosen)
+        return BYOKExtractor(client: ModelCatalogController.shared.fallbackLLM(), provider: provider,
+                             model: chosen.isEmpty ? fallback : chosen)
     }
 
     /// The extractors available right now.
+    @MainActor
     static func tiers() -> ExtractionTiers? {
         var tiers = ExtractionTiers()
         if SystemLanguageModel.default.isAvailable {

@@ -183,14 +183,11 @@ struct OnboardingView: View {
         let request = OnboardingSynthesizer.request(provider: provider, model: conversation.model,
                                                     transcript: transcript, links: links)
         do {
-            let response = try await LLMService.shared.complete(request)
+            let response = try await ModelCatalogController.shared.fallbackLLM().complete(request)
             if let usage = response.usage {
-                context.insert(UsageRecord(provider: provider.rawValue,
-                                           model: response.model ?? conversation.model,
-                                           feature: "onboarding",
-                                           inputTokens: usage.inputTokens,
-                                           outputTokens: usage.outputTokens,
-                                           costUSD: usage.costUSD ?? 0))
+                UsageLedger.record(provider: provider.rawValue, model: response.model ?? conversation.model,
+                                   feature: "onboarding", inputTokens: usage.inputTokens,
+                                   outputTokens: usage.outputTokens, reportedCostUSD: usage.costUSD, context: context)
             }
             let proposal = try OnboardingSynthesizer.decode(response.text)
             step = .review(proposal)

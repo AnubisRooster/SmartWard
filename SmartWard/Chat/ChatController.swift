@@ -21,10 +21,11 @@ final class ChatController {
 
     private var approval: CheckedContinuation<Bool, Never>?
 
-    private let runner: StrategistRunner
+    /// `nil` uses your provider with model fallback (NFR-5).
+    private let llm: (any LLMCompleting)?
 
-    init(llm: any LLMCompleting = LLMService.shared) {
-        runner = StrategistRunner(llm: llm)
+    init(llm: (any LLMCompleting)? = nil) {
+        self.llm = llm
     }
 
     func send(in conversation: Conversation, context: ModelContext) async {
@@ -90,6 +91,13 @@ final class ChatController {
         }
         tools = tools.filter { allowed.contains($0.definition.name) }
 
+        let client: any LLMCompleting
+        if let llm {
+            client = llm
+        } else {
+            client = ModelCatalogController.shared.fallbackLLM()
+        }
+        let runner = StrategistRunner(llm: client)
         do {
             let produced = try await runner.run(request: request, tools: tools,
                                                 confirm: { action in await self.requestApproval(action) }) { event in
@@ -166,12 +174,9 @@ final class ChatController {
                 streamingText += "\n\n"
             }
             if let usage = response.usage {
-                context.insert(UsageRecord(provider: provider.rawValue,
-                                           model: response.model ?? conversation.model,
-                                           feature: "chat",
-                                           inputTokens: usage.inputTokens,
-                                           outputTokens: usage.outputTokens,
-                                           costUSD: usage.costUSD ?? 0))
+                UsageLedger.record(provider: provider.rawValue, model: response.model ?? conversation.model,
+                                   feature: "chat", inputTokens: usage.inputTokens, outputTokens: usage.outputTokens,
+                                   reportedCostUSD: usage.costUSD, context: context)
             }
         }
     }

@@ -99,6 +99,7 @@ public final class PipelineRunner {
     private let judge: (any RelevanceJudging)?
     private let threshold: Double
     private let extraction: ExtractionTiers?
+    private let budget: DailyBudget?
     private let now: () -> Date
 
     /// A turn is indexed once it's this old, so a reply still being saved isn't cut short.
@@ -106,13 +107,14 @@ public final class PipelineRunner {
 
     public init(embedder: EmbeddingModel, fullText: (any FullTextFetching)?,
                 judge: (any RelevanceJudging)? = nil, strength: Triage.Strength = .balanced,
-                extraction: ExtractionTiers? = nil,
+                extraction: ExtractionTiers? = nil, budget: DailyBudget? = nil,
                 now: @escaping () -> Date = { Date() }) {
         self.embedder = embedder
         self.fullText = fullText
         self.judge = judge
         self.threshold = strength.threshold
         self.extraction = extraction
+        self.budget = budget
         self.now = now
     }
 
@@ -133,6 +135,7 @@ public final class PipelineRunner {
         var links: [UUID: ProjectLink] = [:]
         if let extraction {
             graph = try GraphIndexer(context: context, embedder: embedder, tiers: extraction, now: now)
+            graph?.budget = budget
             for link in try context.fetch(FetchDescriptor<ProjectLink>()) {
                 if let sourceID = link.sourceID { links[sourceID] = link }
             }

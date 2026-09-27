@@ -24,15 +24,12 @@ final class BriefController {
         message = nil
         defer { isSuggesting = false }
         do {
-            let suggestion = try await BriefReviser(llm: LLMService.shared)
+            let suggestion = try await BriefReviser(llm: ModelCatalogController.shared.fallbackLLM())
                 .suggest(for: project, provider: provider, model: model)
             if let usage = suggestion.response.usage {
-                context.insert(UsageRecord(provider: provider.rawValue,
-                                           model: suggestion.response.model ?? model,
-                                           feature: "brief",
-                                           inputTokens: usage.inputTokens,
-                                           outputTokens: usage.outputTokens,
-                                           costUSD: usage.costUSD ?? 0))
+                UsageLedger.record(provider: provider.rawValue, model: suggestion.response.model ?? model,
+                                   feature: "brief", inputTokens: usage.inputTokens, outputTokens: usage.outputTokens,
+                                   reportedCostUSD: usage.costUSD, context: context)
             }
             if suggestion.revision == nil {
                 message = "The brief is already up to date."

@@ -39,6 +39,7 @@ struct RootView: View {
             lock.handle(phase)
             switch phase {
             case .active:
+                Task { await ModelCatalogController.shared.load() }
                 // Items shared while the app was closed.
                 if ShareIntake.importPending(context: context) > 0 {
                     Task { await PipelineController.shared.process(context: context) }

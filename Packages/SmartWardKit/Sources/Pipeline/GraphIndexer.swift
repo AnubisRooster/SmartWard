@@ -97,6 +97,9 @@ public final class GraphIndexer {
 
     /// Usage rows written this run (T2 calls), for reporting.
     public private(set) var usageRecords: [UsageRecord] = []
+    /// When today's budget is used up, nothing goes to your provider: work
+    /// that may fall back does so on-device, and the rest waits (NFR-9).
+    public var budget: DailyBudget?
 
     public init(context: ModelContext, embedder: EmbeddingModel, tiers: ExtractionTiers,
                 now: @escaping () -> Date = { Date() }) throws {
@@ -140,7 +143,7 @@ public final class GraphIndexer {
     /// - Returns: the link result, or `nil` when no allowed extractor is
     ///   available (the article stays `embedded` for a later run).
     public func index(_ article: Article, links: [UUID: ProjectLink]) async throws -> GraphLinker.Result? {
-        guard let extractor = tiers.first(in: Self.tiers(for: article, links: links)) else { return nil }
+        guard let extractor = tiers.first(in: withinBudget(Self.tiers(for: article, links: links))) else { return nil }
         let chunks = (article.chunks ?? []).sorted { $0.ordinal < $1.ordinal }
         try GraphLinker.unlink(chunks, context: context)
         let result = try await extractAndLink(chunks, with: extractor, feature: "extraction")
@@ -153,7 +156,7 @@ public final class GraphIndexer {
     /// Chunks, embeds and links one turn.
     /// - Returns: `nil` when no allowed extractor is available.
     public func index(_ message: Message) async throws -> GraphLinker.Result? {
-        guard let extractor = tiers.first(in: Self.tiers(for: message.conversation)) else { return nil }
+        guard let extractor = tiers.first(in: withinBudget(Self.tiers(for: message.conversation))) else { return nil }
         for old in message.chunks ?? [] { context.delete(old) }
         message.chunks = []
 
@@ -176,6 +179,12 @@ public final class GraphIndexer {
 
     // MARK: Shared
 
+    /// `preference` without your provider once today's budget is spent.
+    func withinBudget(_ preference: [ExtractionTier]) -> [ExtractionTier] {
+        guard let budget, budget.isExhausted(context: context, now: now()) else { return preference }
+        return preference.filter { $0 != .byok }
+    }
+
     private func extractAndLink(_ chunks: [KnowledgeStore.Chunk], with extractor: any EntityExtracting,
                                 feature: String) async throws -> GraphLinker.Result {
         var total = GraphLinker.Result()
@@ -184,10 +193,10 @@ public final class GraphIndexer {
             let text = batch.map(\.text).joined(separator: "\n\n")
             let output = try await extractor.extract(text)
             if let tokens = output.usage {
-                let record = UsageRecord(provider: output.provider ?? extractor.tier.rawValue, model: output.model ?? "",
-                                         feature: feature, inputTokens: tokens.inputTokens,
-                                         outputTokens: tokens.outputTokens, costUSD: tokens.costUSD ?? 0)
-                context.insert(record)
+                let record = UsageLedger.record(provider: output.provider ?? extractor.tier.rawValue,
+                                                model: output.model ?? "", feature: feature,
+                                                inputTokens: tokens.inputTokens, outputTokens: tokens.outputTokens,
+                                                reportedCostUSD: tokens.costUSD, context: context, now: now())
                 usageRecords.append(record)
             }
             let linked = await GraphLinker.link(output.graph, chunks: batch, resolver: resolver, now: now())
