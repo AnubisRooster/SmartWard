@@ -9,6 +9,31 @@ CI builds the app and runs the package tests on the iOS Simulator. This page cov
 3. **GitHub sign-in.** Create a GitHub OAuth App with device flow enabled. Put its client ID in `GitHubConfig.oauthClientID` (`SmartWard/GitHub/GitHubAccount.swift`). While it's empty, only the token path shows.
 4. **Device.** You need an iPhone 15 Pro or newer on iOS 26, with Apple Intelligence on. Add an OpenRouter key during onboarding.
 
+### Signing without a paid team (App Group unavailable)
+
+App Groups is a paid-only capability, so a free Personal Team cannot grant
+`group.com.intelligentdesignsllc.smartward` and step 2 is not available. The app
+still builds and runs; the share extension stays in the share sheet with its
+Save button disabled, because `SharedInbox.appGroup()` returns `nil` when the
+container is missing. Everything else is unaffected — the SwiftData store lives
+in the app's own container.
+
+To build that way without editing the tracked spec, keep the signing settings in
+a local overlay and generate from it:
+
+```sh
+xcodegen generate --spec project.device.yml
+xcodebuild -project SmartWard.xcodeproj -scheme SmartWard \
+  -destination 'id=<device-udid>' -allowProvisioningUpdates build
+```
+
+`project.device.yml` sets `DEVELOPMENT_TEAM` and points both targets at
+app-group-free entitlement copies. It is excluded from git via
+`.git/info/exclude`, so `project.yml` stays identical to upstream and future
+pulls merge cleanly. Free provisioning profiles expire after 7 days, so
+re-run the build and reinstall when that happens.
+
+
 ## Phase 5 exit criteria
 
 ### GraphRAG latency (NFR-4: under 500 ms at 100k chunks)

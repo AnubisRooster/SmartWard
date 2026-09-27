@@ -1,0 +1,32 @@
+{
+  "pins" : [
+    {
+      "identity" : "llm.swift",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/eastriverlee/LLM.swift",
+      "state" : {
+        "revision" : "4b2517839f24498bea0695bae8967b359b9a35c4",
+        "version" : "1.8.0"
+      }
+    },
+    {
+      "identity" : "ondevicekit",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/AnubisRooster/OnDeviceKit",
+      "state" : {
+        "branch" : "main",
+        "revision" : "62782728c4c0aaae997edea0d5a8d20a8620986a"
+      }
+    },
+    {
+      "identity" : "swiftsoup",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/scinfu/SwiftSoup.git",
+      "state" : {
+        "revision" : "18b80329749eca5ea29fc50211dca5c7eff5bfec",
+        "version" : "2.13.9"
+      }
+    }
+  ],
+  "version" : 2
+}
