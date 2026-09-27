@@ -34,6 +34,7 @@ Local-first iOS research strategist. The source of truth for requirements, desig
 - Record every provider call with `UsageLedger.record`, which prices calls whose cost the provider didn't report, and never insert `UsageRecord`s directly. Background provider work must respect `DailyBudget` (see `GraphIndexer.withinBudget`): when the budget is spent it falls back to on-device or waits. Foreground calls in the app go through `ModelCatalogController.shared.fallbackLLM()`, so a 429 or 5xx rotates to a fallback model.
 - Every strategist turn must end: the runner's last round forces `toolChoice = .none`, and tool failures go back to the model as error results instead of aborting the turn.
 - When you add a model or a stored property, add it to `LibraryArchive` (its record, `snapshot` and `restore`) in the same change, or export and backup silently drop it; `BackupTests` checks that wipe → restore reproduces the library exactly.
+- Per-query paths (search, retrieval, tools, the graph view) must not fetch whole tables: use predicates on ids or `normalizedKey`, prefetch relationships you walk, and `TopK` for rankings. `PerformanceTests` prints timings at scale.
 - Enum-backed model fields store a raw `String` with a literal default and expose a typed computed property that falls back on unknown values.
 
 ## Checks

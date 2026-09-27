@@ -147,7 +147,10 @@ public struct GraphSnapshot: Equatable, Sendable {
     @MainActor
     public static func build(context: ModelContext, scope: Scope = .all, limit: Int = 80,
                              includeDormant: Bool = false, now: Date = Date()) throws -> GraphSnapshot {
-        let allNodes = try context.fetch(FetchDescriptor<ThemeNode>())
+        var nodeFetch = FetchDescriptor<ThemeNode>()
+        // Strength needs every mention; load them in one go rather than per node.
+        nodeFetch.relationshipKeyPathsForPrefetching = [\.mentions]
+        let allNodes = try context.fetch(nodeFetch)
         let inScope = try scopedIDs(scope, nodes: allNodes, context: context, now: now)
 
         var nodes: [Node] = []
@@ -162,8 +165,12 @@ public struct GraphSnapshot: Equatable, Sendable {
         let kept = Set(nodes.map(\.id))
 
         var grouped: [String: (source: UUID, target: UUID, types: [String: Int])] = [:]
-        for edge in try context.fetch(FetchDescriptor<ThemeEdge>())
-        where kept.contains(edge.sourceNodeID) && kept.contains(edge.targetNodeID) && edge.sourceNodeID != edge.targetNodeID {
+        // Only edges among the kept nodes (at most `limit` of them).
+        let keptIDs = Array(kept)
+        let keptEdges = try context.fetch(FetchDescriptor<ThemeEdge>(predicate: #Predicate {
+            keptIDs.contains($0.sourceNodeID) && keptIDs.contains($0.targetNodeID)
+        }))
+        for edge in keptEdges where edge.sourceNodeID != edge.targetNodeID {
             let (a, b) = edge.sourceNodeID.uuidString < edge.targetNodeID.uuidString
                 ? (edge.sourceNodeID, edge.targetNodeID) : (edge.targetNodeID, edge.sourceNodeID)
             let key = "\(a.uuidString)|\(b.uuidString)"

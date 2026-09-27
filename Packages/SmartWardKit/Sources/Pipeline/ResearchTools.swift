@@ -89,22 +89,20 @@ public struct GraphNeighborsTool: StrategistTool {
         guard let name = try? arguments.decode(as: Arguments.self).entity else {
             throw ProjectToolError.invalidArguments("expected {entity}")
         }
-        let key = EntityResolver.key(name)
-        let nodes = try context.fetch(FetchDescriptor<ThemeNode>())
-        guard let node = nodes.first(where: { node in
-            EntityResolver.key(node.canonicalLabel) == key
-                || (node.aliases ?? []).contains { EntityResolver.key($0.alias) == key }
-        }) else {
+        guard let node = try Self.theme(named: name, context: context) else {
             return "No theme called \"\(name)\" in the user's library yet."
         }
-
-        var byID: [UUID: ThemeNode] = [:]
-        for other in nodes { byID[other.id] = other }
         var connections: [String: (node: ThemeNode, types: [String: Int])] = [:]
         let nodeID = node.id
         let edges = try context.fetch(FetchDescriptor<ThemeEdge>(predicate: #Predicate {
             $0.sourceNodeID == nodeID || $0.targetNodeID == nodeID
         }))
+        // Only the neighbors, not every theme.
+        let neighborIDs = Array(Set(edges.map { $0.sourceNodeID == nodeID ? $0.targetNodeID : $0.sourceNodeID }))
+        var byID: [UUID: ThemeNode] = [:]
+        for other in try context.fetch(FetchDescriptor<ThemeNode>(predicate: #Predicate { neighborIDs.contains($0.id) })) {
+            byID[other.id] = other
+        }
         for edge in edges {
             let outgoing = edge.sourceNodeID == nodeID
             guard let other = byID[outgoing ? edge.targetNodeID : edge.sourceNodeID] else { continue }
@@ -134,6 +132,24 @@ public struct GraphNeighborsTool: StrategistTool {
             }
         }
         return lines.joined(separator: "\n")
+    }
+}
+
+extension GraphNeighborsTool {
+    /// The theme whose label or alias is `name`: labels through the stored
+    /// "type:key" index, then aliases.
+    @MainActor
+    static func theme(named name: String, context: ModelContext) throws -> ThemeNode? {
+        let key = EntityResolver.key(name)
+        guard !key.isEmpty else { return nil }
+        let candidates = ExtractedGraph.entityTypes.map { "\($0):\(key)" }
+        var byLabel = FetchDescriptor<ThemeNode>(predicate: #Predicate { candidates.contains($0.normalizedKey) },
+                                                 sortBy: [SortDescriptor(\.createdAt)])
+        byLabel.fetchLimit = 1
+        if let node = try context.fetch(byLabel).first { return node }
+        return try context.fetch(FetchDescriptor<EntityAlias>())
+            .first { EntityResolver.key($0.alias) == key && $0.node != nil }?
+            .node
     }
 }
 
