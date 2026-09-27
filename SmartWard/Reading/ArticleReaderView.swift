@@ -27,6 +27,8 @@ struct ArticleReaderView: View {
                     .font(.title2.bold())
                 metadata
 
+                ThemesRow(article: article)
+
                 if !article.relevanceReason.isEmpty {
                     Label(article.relevanceReason, systemImage: "sparkle.magnifyingglass")
                         .font(.footnote)

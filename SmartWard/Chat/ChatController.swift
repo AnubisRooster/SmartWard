@@ -1,4 +1,5 @@
 import Foundation
+import Pipeline
 import Observation
 import SwiftData
 import BYOKLLMKit
@@ -75,6 +76,11 @@ final class ChatController {
                 conversation.messages?.append(Message(role: "tool", content: activity.joined(separator: "\n")))
             }
             conversation.updatedAt = Date()
+            // Add this exchange to the knowledge graph once it has settled.
+            Task {
+                try? await Task.sleep(nanoseconds: UInt64((PipelineRunner.turnSettleTime + 1) * 1_000_000_000))
+                await PipelineController.shared.process(context: context)
+            }
         } catch {
             errorMessage = error.localizedDescription
         }

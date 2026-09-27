@@ -60,8 +60,11 @@ public struct ArticleIndexer {
 ///
 /// Every step saves before the next, so a killed run resumes where it
 /// stopped without redoing or duplicating work. Linked-repo docs skip triage:
-/// they are project context by definition. Extraction (Phase 3) will pick up
-/// from `embedded`.
+/// they are project context by definition.
+///
+/// With extractors configured it continues `embedded` → extract → `linked`
+/// (PLAN §3.3 A6–A8), and indexes new conversation turns first, since they
+/// are what you're working on right now.
 @MainActor
 public final class PipelineRunner {
     public struct Report: Equatable, Sendable {
@@ -69,15 +72,19 @@ public final class PipelineRunner {
         public var triagedOut = 0
         public var fullTextFetched = 0
         public var embedded = 0
+        public var linked = 0
+        public var turnsIndexed = 0
         /// Articles still waiting in a stage this run didn't reach.
         public var remaining = 0
 
         public init(triaged: Int = 0, triagedOut: Int = 0, fullTextFetched: Int = 0,
-                    embedded: Int = 0, remaining: Int = 0) {
+                    embedded: Int = 0, linked: Int = 0, turnsIndexed: Int = 0, remaining: Int = 0) {
             self.triaged = triaged
             self.triagedOut = triagedOut
             self.fullTextFetched = fullTextFetched
             self.embedded = embedded
+            self.linked = linked
+            self.turnsIndexed = turnsIndexed
             self.remaining = remaining
         }
     }
@@ -91,16 +98,26 @@ public final class PipelineRunner {
     private let fullText: (any FullTextFetching)?
     private let judge: (any RelevanceJudging)?
     private let threshold: Double
+    private let extraction: ExtractionTiers?
     private let now: () -> Date
+
+    /// A turn is indexed once it's this old, so a reply still being saved isn't cut short.
+    public static let turnSettleTime: TimeInterval = 5
 
     public init(embedder: EmbeddingModel, fullText: (any FullTextFetching)?,
                 judge: (any RelevanceJudging)? = nil, strength: Triage.Strength = .balanced,
+                extraction: ExtractionTiers? = nil,
                 now: @escaping () -> Date = { Date() }) {
         self.embedder = embedder
         self.fullText = fullText
         self.judge = judge
         self.threshold = strength.threshold
+        self.extraction = extraction
         self.now = now
+    }
+
+    private var stages: [ArticleStage] {
+        extraction == nil ? [.fetched, .cleaned, .triaged] : [.fetched, .cleaned, .triaged, .embedded]
     }
 
     /// Works through the backlog until it's empty, `deadline` passes, or the
@@ -112,8 +129,32 @@ public final class PipelineRunner {
         // Articles left in place this run (e.g. their host is backing off),
         // so they aren't picked again until the next run.
         var skipped = Set<UUID>()
+        var graph: GraphIndexer?
+        var links: [UUID: ProjectLink] = [:]
+        if let extraction {
+            graph = try GraphIndexer(context: context, embedder: embedder, tiers: extraction, now: now)
+            for link in try context.fetch(FetchDescriptor<ProjectLink>()) {
+                if let sourceID = link.sourceID { links[sourceID] = link }
+            }
+        }
 
         while now() < deadline, !Task.isCancelled {
+            if let graph, let turn = try nextTurn(excluding: skipped, context: context) {
+                do {
+                    if try await graph.index(turn) != nil {
+                        report.turnsIndexed += 1
+                    } else {
+                        skipped.insert(turn.id)
+                    }
+                } catch is CancellationError {
+                    break
+                } catch {
+                    skipped.insert(turn.id)
+                }
+                try context.save()
+                continue
+            }
+
             guard let article = try nextWork(excluding: skipped, context: context) else { break }
             switch article.stage {
             case .fetched:
@@ -123,6 +164,20 @@ public final class PipelineRunner {
                 }
             case .cleaned:
                 _ = try await triage(article, model: model, report: &report)
+            case .embedded:
+                // Leave it for a later run when no allowed extractor is
+                // available or the extraction failed.
+                do {
+                    if try await graph?.index(article, links: links) != nil {
+                        report.linked += 1
+                    } else {
+                        skipped.insert(article.id)
+                    }
+                } catch is CancellationError {
+                    break
+                } catch {
+                    skipped.insert(article.id)
+                }
             default:
                 await indexer.index(article, context: context)
                 report.embedded += 1
@@ -130,7 +185,7 @@ public final class PipelineRunner {
             try context.save()
         }
 
-        report.remaining = try [ArticleStage.fetched, .cleaned, .triaged].reduce(0) { total, stage in
+        report.remaining = try stages.reduce(0) { total, stage in
             let raw = stage.rawValue
             return total + (try context.fetchCount(FetchDescriptor<Article>(predicate: #Predicate { $0.stageRaw == raw })))
         }
@@ -140,10 +195,23 @@ public final class PipelineRunner {
     /// The next article to work on: earlier stages first, so triage keeps
     /// up with fetching before any embedding work.
     private func nextWork(excluding skipped: Set<UUID>, context: ModelContext) throws -> Article? {
-        for stage in [ArticleStage.fetched, .cleaned, .triaged] {
+        for stage in stages {
             if let article = try next(stage, excluding: skipped, context: context) { return article }
         }
         return nil
+    }
+
+    /// The oldest settled conversation turn not yet in the graph.
+    private func nextTurn(excluding skipped: Set<UUID>, context: ModelContext) throws -> Message? {
+        let settled = now().addingTimeInterval(-Self.turnSettleTime)
+        var descriptor = FetchDescriptor<Message>(
+            predicate: #Predicate { message in
+                message.indexedAt == nil && message.createdAt < settled
+                    && (message.role == "user" || message.role == "assistant")
+            },
+            sortBy: [SortDescriptor(\.createdAt)])
+        descriptor.fetchLimit = Self.batchSize + skipped.count
+        return try context.fetch(descriptor).first { !skipped.contains($0.id) }
     }
 
     /// Newest first: fresh items are the ones you'll read next.

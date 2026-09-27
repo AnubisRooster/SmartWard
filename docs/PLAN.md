@@ -1,4 +1,4 @@
-# SmartWard — Project Plan & High-Level Design (v2.2)
+# SmartWard — Project Plan & High-Level Design (v2.3)
 
 *A local-first iPhone (and later Mac) agentic research assistant. It reads the AI
 and software-development world for you, keeps a knowledge graph of themes that
@@ -28,6 +28,14 @@ brainstorming partner on your own projects. It uses your own API keys (BYOK).*
 | D4 | **GitHub: one-tap sign-in (OAuth device flow) is the default; a fine-grained token is the "advanced" option** | §5.8 options B/C ordering fixed; Settings shows "Sign in with GitHub", with "Use a personal access token instead" under Advanced |
 | D5 | **Private repos are extracted on-device only**, with no user override | Private-repo docs never go to a BYOK provider: extraction is T1 only, and they're excluded from BYOK context unless you paste the content into a conversation yourself. `ProjectLink.includeInExtraction` applies to public repos only |
 | D6 | **The app is named SmartWard** and lives in its own repo; build order starts with the OnDeviceKit changes (§5.6) | The Phase 1 ODK work is under way first |
+
+### v2.2 → v2.3: build notes (Phase 3)
+
+| # | Change | Why |
+|---|---|---|
+| B1 | **GraphRAG is built in SmartWard over the SwiftData graph**, not by adding an injectable entity index to ODK's GraphRetrievalKit (C3) | GraphRetrievalKit indexes its own `RetrievalKit` chunks through `KnowledgeGraphExtractor`; SmartWard's chunks, mentions and edges already live in SwiftData, so a retriever over those tables is simpler and avoids a second copy. GraphKit is still used for export (Phase 5) and GraphViewKit for the graph view |
+| B2 | **Entity resolution never auto-merges names whose version tokens differ** ("GPT-4" vs "GPT-4o", "Llama 3" vs "Llama 3.1") | Short technical names embed almost identically across versions; merging them would be the main source of false merges (§7 gate). They become review suggestions instead |
+| B3 | **Extraction routing** | Articles: T1 first, T2 fallback. Public linked-repo docs and conversation turns: T2 first (D2), T1 fallback. Private-repo content and off-the-record chats: T1 only (D5), and they wait rather than fall back |
 
 ### v1 → v2
 

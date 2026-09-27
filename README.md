@@ -23,6 +23,12 @@ Phase 2 ingestion and search, done:
 - [x] Hybrid search: keyword (BM25, with compound tokens like "SWE-bench" kept whole) and semantic search fused per article, on-device, from the Reading tab's search field. Off-topic items are included
 - [x] Background refresh and the share extension: hourly background polling, backlog processing while charging, a Refresh that keeps going with system progress after you leave the app, and "Add to SmartWard" from any app's share sheet (optionally tagged to a project)
 
+Phase 3 knowledge graph and GraphRAG, in progress:
+
+- [x] Extraction and entity resolution: entities and relations from articles (on-device with Apple Intelligence), and from conversation turns and public repo docs (your provider, per D2; private repos and off-the-record chats stay on-device). Names resolve to one node through aliases and embedding similarity, with uncertain merges queued for review. Mentions and edges cite the chunk they came from, and the reader shows each article's themes
+- [ ] GraphRAG in chat, with "why retrieved" provenance
+- [ ] Graph view, node detail, and merge/split review
+
 ## Requirements
 
 - Xcode 26+ and iOS 26+, on an iPhone 15 Pro or newer (Apple Intelligence-capable)
