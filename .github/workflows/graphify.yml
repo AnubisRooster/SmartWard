@@ -31,7 +31,10 @@ jobs:
           python-version: "3.12"
 
       - name: Install graphify
-        run: pip install "graphifyy[gemini]"
+        # Pinned: extractor changes alter the node set, so an unpinned install
+        # makes every run produce a different graph. Keep this in step with the
+        # local tool: uv tool upgrade graphifyy
+        run: pip install "graphifyy[gemini]==0.9.70"
 
       - name: Restore graphify state
         uses: actions/cache@v4
