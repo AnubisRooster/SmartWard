@@ -13,6 +13,7 @@ let package = Package(
     products: [
         .library(name: "KnowledgeStore", targets: ["KnowledgeStore"]),
         .library(name: "StrategistCore", targets: ["StrategistCore"]),
+        .library(name: "IngestKit", targets: ["IngestKit"]),
     ],
     dependencies: [
         .package(url: "https://github.com/AnubisRooster/OnDeviceKit", branch: "main"),
@@ -24,6 +25,7 @@ let package = Package(
                     "KnowledgeStore",
                     .product(name: "BYOKLLMKit", package: "OnDeviceKit"),
                 ]),
+        .target(name: "IngestKit", dependencies: ["KnowledgeStore"]),
         .testTarget(name: "KnowledgeStoreTests", dependencies: ["KnowledgeStore"]),
         .testTarget(name: "StrategistCoreTests",
                     dependencies: [
@@ -31,5 +33,6 @@ let package = Package(
                         "KnowledgeStore",
                         .product(name: "BYOKLLMKit", package: "OnDeviceKit"),
                     ]),
+        .testTarget(name: "IngestKitTests", dependencies: ["IngestKit", "KnowledgeStore"]),
     ]
 )

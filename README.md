@@ -13,7 +13,7 @@ Phase 1 foundation, in progress:
 - [x] App shell: tabs, SwiftData-backed Projects with repo/URL links, and BYOK key settings
 - [x] Strategist chat: streaming BYOK chat with four modes, scoped to a project, where the strategist can read project state and record decisions and open questions
 - [x] Onboarding interview: key and Apple Intelligence preflight, a strategist-led interview with pasted links, and a structured setup proposal you edit before anything is created
-- [ ] GitHub sign-in and repo sync
+- [x] GitHub sign-in and repo sync: one-tap device flow (with a token as the advanced option), a repo picker, and read-only sync of docs and manifests; private repos stay on-device, and dependencies feed the dependency radar
 - [ ] App lock
 
 ## Requirements
