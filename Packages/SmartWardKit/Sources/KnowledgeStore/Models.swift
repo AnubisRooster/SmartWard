@@ -45,8 +45,57 @@ public final class ProjectBrief {
     public var sourceWatermark: Date = Date.distantPast
     public var updatedAt: Date = Date()
 
+    /// Proposed and past versions: nothing changes the brief without a
+    /// revision, so edits can be reviewed and undone.
+    @Relationship(deleteRule: .cascade, inverse: \BriefRevision.brief)
+    public var revisions: [BriefRevision]? = []
+
     public init(markdown: String = "") {
         self.markdown = markdown
+    }
+}
+
+public enum BriefRevisionStatus: String, CaseIterable, Codable, Sendable {
+    /// Waiting for you to accept or reject it.
+    case pending
+    case accepted
+    case rejected
+    /// Replaced by a newer proposal or edit before you decided.
+    case superseded
+}
+
+/// One change to a project brief: proposed by the strategist or the brief
+/// reviser (you accept or reject it), or made by you (accepted as made).
+@Model
+public final class BriefRevision {
+    public var id: UUID = UUID()
+    public var brief: ProjectBrief?
+    /// The brief text the change was made against.
+    public var baseMarkdown: String = ""
+    public var proposedMarkdown: String = ""
+    public var rationale: String = ""
+    /// strategist | reviser | user
+    public var origin: String = "strategist"
+    /// A `BriefRevisionStatus` raw value; read it through `status`.
+    public var statusRaw: String = "pending"
+    /// The newest material the proposal covers; accepting it advances the
+    /// brief's watermark to here.
+    public var coversUntil: Date?
+    public var createdAt: Date = Date()
+    public var resolvedAt: Date?
+
+    public var status: BriefRevisionStatus {
+        get { BriefRevisionStatus(rawValue: statusRaw) ?? .pending }
+        set { statusRaw = newValue.rawValue }
+    }
+
+    public init(baseMarkdown: String, proposedMarkdown: String, rationale: String = "",
+                origin: String = "strategist", coversUntil: Date? = nil) {
+        self.baseMarkdown = baseMarkdown
+        self.proposedMarkdown = proposedMarkdown
+        self.rationale = rationale
+        self.origin = origin
+        self.coversUntil = coversUntil
     }
 }
 

@@ -76,3 +76,38 @@ public struct RecordStrategyItemTool: StrategistTool {
         return "Recorded \(StrategistPrompt.label(for: kind)): \(text)"
     }
 }
+
+/// Proposes a revised project brief. Nothing changes until the user accepts
+/// the diff in the project (PLAN §5.7), so this needs no confirmation.
+public struct ProposeBriefUpdateTool: StrategistTool {
+    public let project: Project
+
+    public init(project: Project) {
+        self.project = project
+    }
+
+    public var definition: LLMTool {
+        let markdown: JSONValue = ["type": "string", "description": "The complete revised brief in Markdown, not just the changes."]
+        let rationale: JSONValue = ["type": "string", "description": "One sentence on what changed and why."]
+        let properties: JSONValue = ["markdown": markdown, "rationale": rationale]
+        return LLMTool(name: "propose_brief_update",
+                       description: "Proposes a revised version of the project's brief. The user reviews the diff and accepts or rejects it; use it when the conversation settles something the brief should reflect.",
+                       inputSchema: ["type": "object", "properties": properties, "required": ["markdown", "rationale"]])
+    }
+
+    private struct Arguments: Decodable {
+        let markdown: String
+        let rationale: String?
+    }
+
+    @MainActor
+    public func run(arguments: JSONValue) async throws -> String {
+        guard let parsed = try? arguments.decode(as: Arguments.self) else {
+            throw ProjectToolError.invalidArguments("expected {markdown, rationale}")
+        }
+        let revision = try BriefEditing.propose(parsed.markdown, rationale: parsed.rationale ?? "",
+                                                origin: "strategist", for: project)
+        let counts = BriefDiff.counts(BriefDiff.lines(from: revision.baseMarkdown, to: revision.proposedMarkdown))
+        return "Proposed a brief update (+\(counts.added) −\(counts.removed) lines). The user will accept or reject it in the project; don't treat it as applied."
+    }
+}
