@@ -23,6 +23,7 @@ public enum KnowledgeSchema {
         ThemeEdge.self,
         MergeSuggestion.self,
         UsageRecord.self,
+        Digest.self,
     ]
 
     public static var schema: Schema { Schema(models) }
