@@ -4,6 +4,7 @@ Local-first iOS research strategist. The source of truth for requirements, desig
 
 ## Layout
 
+- `ShareExtension/`: the share extension. It never opens the SwiftData store; it only writes to `ShareInbox`.
 - `SmartWard/`: the iOS app (SwiftUI). The Xcode project is generated from `project.yml` by XcodeGen and is not committed.
 - `Packages/SmartWardKit/`: local SPM package. Keep logic here, not in views, so `swift test` covers it without a simulator.
   - `KnowledgeStore`: the SwiftData models, `KnowledgeSchema`, `ContextPolicy` and `ThemeStrength`.
@@ -11,6 +12,7 @@ Local-first iOS research strategist. The source of truth for requirements, desig
     - Sources: `SourceEndpoint` (what a user typed → the URL fetched), `SourceFetcher` (per-kind adapters), `FeedParser` (RSS/Atom/RDF), `ArticleExtractor` (SwiftSoup; HTML → clean text), `PolitenessGate` (rate limits, backoff, robots.txt), `FeedIngest` (dedupe and store).
     - GitHub: the GET-only `GitHubClient`, `GitHubDeviceFlow`, `GitHubTokenStore` (device-only Keychain), `ManifestParser`, and `RepoSync` (repo docs → articles, dependency radar).
   - `Pipeline`: `PipelineRunner` (the resumable stage machine: triage → full text → chunk + embed), `Triage` and `InterestModel` (T0 relevance), `ArticleIndexer`, `EmbeddingModel`, `VectorCoding`, and hybrid search (`LexicalIndex` BM25 + vectors, fused with reciprocal rank fusion in `HybridSearchIndex`). It sits on OnDeviceKit's `RetrievalKit`; qualify `KnowledgeStore.Chunk` vs `RetrievalKit.Chunk` in files that import both.
+  - `ShareInbox`: the App Group inbox (JSON files) shared with the share extension. It must stay dependency-free: it's the only SmartWardKit module the extension links. `IngestKit.SharedImport` moves its items into the store.
   - `AppLock`: `AppLockPolicy` (when to lock), `AppLockCoordinator` (biometrics first, PIN fallback, re-baseline after enrollment changes), and `PINRules`. It sits on OnDeviceKit's `PINLockKit` and `BiometricLockKit`.
   - `StrategistCore`: the tool-calling loop (`StrategistRunner`), mode prompts, history budgeting, and project tools. It depends on OnDeviceKit's `BYOKLLMKit`.
 - Shared, domain-agnostic code belongs in [OnDeviceKit](https://github.com/AnubisRooster/OnDeviceKit), not here.

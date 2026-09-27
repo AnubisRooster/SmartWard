@@ -4,11 +4,14 @@ import KnowledgeStore
 
 @main
 struct SmartWardApp: App {
-    private let store = Result { try KnowledgeSchema.makeContainer() }
+    init() {
+        // Background task handlers must be registered before launch finishes.
+        BackgroundWork.registerHandlers()
+    }
 
     var body: some Scene {
         WindowGroup {
-            switch store {
+            switch AppStore.container {
             case .success(let container):
                 RootView()
                     .modelContainer(container)
@@ -17,6 +20,9 @@ struct SmartWardApp: App {
                                        systemImage: "externaldrive.badge.exclamationmark",
                                        description: Text(error.localizedDescription))
             }
+        }
+        .backgroundTask(.appRefresh(BackgroundWork.refreshID)) {
+            await BackgroundWork.appRefresh()
         }
     }
 }

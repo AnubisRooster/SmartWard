@@ -16,6 +16,7 @@ let package = Package(
         .library(name: "IngestKit", targets: ["IngestKit"]),
         .library(name: "AppLock", targets: ["AppLock"]),
         .library(name: "Pipeline", targets: ["Pipeline"]),
+        .library(name: "ShareInbox", targets: ["ShareInbox"]),
     ],
     dependencies: [
         .package(url: "https://github.com/AnubisRooster/OnDeviceKit", branch: "main"),
@@ -29,9 +30,12 @@ let package = Package(
                     "KnowledgeStore",
                     .product(name: "BYOKLLMKit", package: "OnDeviceKit"),
                 ]),
+        // The share extension links only this; keep it dependency-free.
+        .target(name: "ShareInbox"),
         .target(name: "IngestKit",
                 dependencies: [
                     "KnowledgeStore",
+                    "ShareInbox",
                     .product(name: "SwiftSoup", package: "SwiftSoup"),
                 ]),
         .target(name: "Pipeline",
@@ -52,7 +56,7 @@ let package = Package(
                         "KnowledgeStore",
                         .product(name: "BYOKLLMKit", package: "OnDeviceKit"),
                     ]),
-        .testTarget(name: "IngestKitTests", dependencies: ["IngestKit", "KnowledgeStore"]),
+        .testTarget(name: "IngestKitTests", dependencies: ["IngestKit", "KnowledgeStore", "ShareInbox"]),
         .testTarget(name: "PipelineTests",
                     dependencies: [
                         "Pipeline",

@@ -230,6 +230,8 @@ public final class Article {
     public var isStarred: Bool = false
     /// Content from a private repo: extraction and BYOK context never see it (D5).
     public var localOnly: Bool = false
+    /// The project it was shared to from the share sheet, if any.
+    public var projectID: UUID?
 
     @Relationship(deleteRule: .cascade, inverse: \Chunk.article)
     public var chunks: [Chunk]? = []

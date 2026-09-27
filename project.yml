@@ -28,7 +28,11 @@ targets:
     deploymentTarget: "26.0"
     sources:
       - path: SmartWard
+        excludes:
+          - Info.plist
+          - SmartWard.entitlements
     dependencies:
+      - target: SmartWardShare
       - package: SmartWardKit
         product: KnowledgeStore
       - package: SmartWardKit
@@ -39,6 +43,8 @@ targets:
         product: AppLock
       - package: SmartWardKit
         product: Pipeline
+      - package: SmartWardKit
+        product: ShareInbox
       - package: OnDeviceKit
         product: BYOKLLMKit
       - package: OnDeviceKit
@@ -50,6 +56,10 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.intelligentdesignsllc.smartward
         TARGETED_DEVICE_FAMILY: "1"
         GENERATE_INFOPLIST_FILE: YES
+        # Background task identifiers and modes; merged with the generated keys.
+        INFOPLIST_FILE: SmartWard/Info.plist
+        # App Group shared with the share extension.
+        CODE_SIGN_ENTITLEMENTS: SmartWard/SmartWard.entitlements
         INFOPLIST_KEY_CFBundleDisplayName: SmartWard
         INFOPLIST_KEY_NSFaceIDUsageDescription: "SmartWard uses Face ID to unlock your research and conversations."
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
@@ -57,3 +67,28 @@ targets:
         INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
         ENABLE_PREVIEWS: YES
     scheme: {}
+
+  # Share extension (PLAN FR-3): writes shared links and text to the App
+  # Group inbox; the app imports them. Links only the dependency-free
+  # ShareInbox module.
+  SmartWardShare:
+    type: app-extension
+    platform: iOS
+    deploymentTarget: "26.0"
+    sources:
+      - path: ShareExtension
+        excludes:
+          - Info.plist
+          - SmartWardShare.entitlements
+    dependencies:
+      - package: SmartWardKit
+        product: ShareInbox
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.intelligentdesignsllc.smartward.share
+        TARGETED_DEVICE_FAMILY: "1"
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_FILE: ShareExtension/Info.plist
+        INFOPLIST_KEY_CFBundleDisplayName: SmartWard
+        CODE_SIGN_ENTITLEMENTS: ShareExtension/SmartWardShare.entitlements
+        SKIP_INSTALL: YES
