@@ -4,6 +4,7 @@ import Pipeline
 
 struct SettingsView: View {
     @AppStorage("onboarding.completed") private var onboardingCompleted = false
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         NavigationStack {
@@ -23,6 +24,7 @@ struct SettingsView: View {
                     Text("What your provider has cost, a daily cap for background work, and model fallback.")
                 }
                 ReadingSettingsSection()
+                DigestSettingsSection()
                 KnowledgeGraphSettingsSection()
                 GitHubSettingsSection()
                 SecuritySettingsSection()
@@ -39,6 +41,11 @@ struct SettingsView: View {
                 }
             }
             .navigationTitle("Settings")
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
         }
     }
 }

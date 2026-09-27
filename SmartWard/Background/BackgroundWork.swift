@@ -62,6 +62,7 @@ enum BackgroundWork {
         let context = container.mainContext
         ShareIntake.importPending(context: context)
         await PipelineController.shared.process(context: context, budget: budget)
+        await DigestController.shared.buildIfDue(context: context, notify: true)
     }
 
     /// "Refresh" from the Reading tab: fetch every source, then triage and

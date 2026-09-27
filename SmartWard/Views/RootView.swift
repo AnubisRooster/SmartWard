@@ -7,21 +7,23 @@ struct RootView: View {
     @State private var lock = AppLockController.shared
 
     var body: some View {
+        // Five tabs fit an iPhone tab bar without a "More" tab; Settings is
+        // behind the gear on Today.
         TabView {
-            Tab("Graph", systemImage: "point.3.connected.trianglepath.dotted") {
-                GraphView()
+            Tab("Today", systemImage: "sun.max") {
+                TodayView()
             }
             Tab("Reading", systemImage: "newspaper") {
                 ReadingView()
+            }
+            Tab("Graph", systemImage: "point.3.connected.trianglepath.dotted") {
+                GraphView()
             }
             Tab("Chat", systemImage: "bubble.left.and.bubble.right") {
                 ChatListView()
             }
             Tab("Projects", systemImage: "folder") {
                 ProjectsView()
-            }
-            Tab("Settings", systemImage: "gearshape") {
-                SettingsView()
             }
         }
         .fullScreenCover(isPresented: Binding(get: { !onboardingCompleted },

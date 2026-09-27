@@ -61,10 +61,10 @@ enum ExtractionSettings {
     static let providerKey = "extraction.provider"
     static let modelKey = "extraction.model"
 
-    /// Your provider may extract conversations and public repo docs unless
-    /// you turned it off; defaults to the provider and model you chat with.
-    @MainActor
-    static func byokExtractor() -> BYOKExtractor? {
+    /// The provider and model for background work (extraction and digest
+    /// summaries), unless you turned your provider off for it; defaults to
+    /// the provider and model you chat with.
+    static func byokSettings() -> (provider: LLMProvider, model: String)? {
         let defaults = UserDefaults.standard
         if defaults.object(forKey: useProviderKey) != nil, !defaults.bool(forKey: useProviderKey) { return nil }
         let providerRaw = defaults.string(forKey: providerKey) ?? defaults.string(forKey: "chat.lastProvider") ?? ""
@@ -73,8 +73,15 @@ enum ExtractionSettings {
         }
         let chosen = defaults.string(forKey: modelKey)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let fallback = defaults.string(forKey: "chat.lastModel") ?? provider.exampleModelID
-        return BYOKExtractor(client: ModelCatalogController.shared.fallbackLLM(), provider: provider,
-                             model: chosen.isEmpty ? fallback : chosen)
+        return (provider, chosen.isEmpty ? fallback : chosen)
+    }
+
+    /// Your provider may extract conversations and public repo docs (D2).
+    @MainActor
+    static func byokExtractor() -> BYOKExtractor? {
+        guard let settings = byokSettings() else { return nil }
+        return BYOKExtractor(client: ModelCatalogController.shared.fallbackLLM(), provider: settings.provider,
+                             model: settings.model)
     }
 
     /// The extractors available right now.
