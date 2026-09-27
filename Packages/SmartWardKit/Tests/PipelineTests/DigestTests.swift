@@ -127,7 +127,8 @@ final class DigestBuilderTests: XCTestCase {
         var builder = DigestBuilder(onDevice: onDevice, byok: byok, now: { fixture.now })
         builder.providerSummaries = 1
 
-        let digest = try XCTUnwrap(try await builder.build(context: fixture.context))
+        let built = try await builder.build(context: fixture.context)
+        let digest = try XCTUnwrap(built)
         XCTAssertEqual(digest.periodStart, fixture.now - 3 * 86_400, "the first digest looks back three days")
         let clusters = digest.clusters
         XCTAssertEqual(clusters.map(\.summaryTier), ["byok", "onDevice"])
@@ -143,7 +144,8 @@ final class DigestBuilderTests: XCTestCase {
         XCTAssertEqual(usage.map(\.feature), ["digest"])
 
         // The next digest starts where this one ended: nothing new yet.
-        XCTAssertNil(try await builder.build(context: fixture.context))
+        let again = try await builder.build(context: fixture.context)
+        XCTAssertNil(again)
         XCTAssertEqual(try DigestBuilder.latest(context: fixture.context)?.id, digest.id)
     }
 
@@ -155,13 +157,15 @@ final class DigestBuilderTests: XCTestCase {
         let onDevice = FakeSummarizer(tier: .onDevice)
         let byok = FakeSummarizer(tier: .byok)
         let budgeted = DigestBuilder(onDevice: onDevice, byok: byok, budget: DailyBudget(capUSD: 1), now: { fixture.now })
-        let digest = try XCTUnwrap(try await budgeted.build(context: fixture.context))
+        let built = try await budgeted.build(context: fixture.context)
+        let digest = try XCTUnwrap(built)
         XCTAssertTrue(byok.requests.isEmpty, "over budget, nothing goes to your provider")
         XCTAssertEqual(digest.clusters.map(\.summaryTier), ["onDevice", "onDevice"])
 
         let other = try DigestFixture()
         let bare = DigestBuilder(onDevice: nil, byok: nil, now: { other.now })
-        let plain = try XCTUnwrap(try await bare.build(context: other.context))
+        let bareBuilt = try await bare.build(context: other.context)
+        let plain = try XCTUnwrap(bareBuilt)
         XCTAssertEqual(plain.clusters.last?.summaryTier, "none")
         XCTAssertEqual(plain.clusters.last?.summary, "Sourdough at scale")
     }
