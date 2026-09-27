@@ -12,6 +12,7 @@ struct GitHubProjectSection: View {
     @State private var showingPicker = false
     @State private var isSyncing = false
     @State private var status: String?
+    @State private var editingLink: ProjectLink?
 
     private var repoLinks: [ProjectLink] {
         (project.links ?? []).filter { $0.kind == .githubRepo }
@@ -36,16 +37,21 @@ struct GitHubProjectSection: View {
                 }
                 .disabled(isSyncing)
                 ForEach(repoLinks) { link in
-                    HStack {
-                        Label(link.repoFullName ?? link.url,
-                              systemImage: link.isPrivate ? "lock" : "chevron.left.forwardslash.chevron.right")
-                        Spacer()
-                        if let synced = link.lastSyncedAt {
-                            Text(synced, style: .relative)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                    Button {
+                        editingLink = link
+                    } label: {
+                        HStack {
+                            Label(link.repoFullName ?? link.url,
+                                  systemImage: link.isPrivate ? "lock" : "chevron.left.forwardslash.chevron.right")
+                            Spacer()
+                            if let synced = link.lastSyncedAt {
+                                Text(synced, style: .relative)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
                         }
                     }
+                    .foregroundStyle(.primary)
                 }
             }
             if let status {
@@ -65,6 +71,9 @@ struct GitHubProjectSection: View {
         }
         .sheet(isPresented: $showingPicker) {
             GitHubRepoPicker(project: project)
+        }
+        .sheet(item: $editingLink) { link in
+            EditLinkView(link: link)
         }
     }
 }

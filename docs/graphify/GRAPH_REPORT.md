@@ -1,145 +1,149 @@
 # Graph Report - SmartWard  (2026-09-27)
 
 ## Corpus Check
-- Large corpus: 146 files · ~565,386 words. Semantic extraction will be expensive (many Claude tokens). Consider running on a subfolder.
+- Large corpus: 146 files · ~565,948 words. Semantic extraction will be expensive (many Claude tokens). Consider running on a subfolder.
 
 ## Summary
-- 2653 nodes · 6843 edges · 132 communities (130 shown, 2 thin omitted)
-- Extraction: 88% EXTRACTED · 12% INFERRED · 0% AMBIGUOUS · INFERRED: 813 edges (avg confidence: 0.84)
+- 2662 nodes · 6872 edges · 136 communities (134 shown, 2 thin omitted)
+- Extraction: 88% EXTRACTED · 12% INFERRED · 0% AMBIGUOUS · INFERRED: 821 edges (avg confidence: 0.84)
 - Token cost: 0 input · 0 output
 
 ## Community Hubs (Navigation)
-- KnowledgeStore
-- Sendable
+- AppLockCoordinator
 - ModelFallback
-- SourceKindOption
 - SharedInbox
-- RetrievedPassage
-- Article
-- .record()
-- View
-- OnboardingView
+- DailyBudget
 - ThemeNode
 - LibraryFixture
-- Conversation
-- GitHubDeviceFlow
+- .makeContainer()
 - Project
+- .score()
+- GitHubDeviceFlow
+- RetrievedPassage
 - StrategistRunner
-- PipelineRunner
-- IngestError
-- PerfTrace
-- ExtractedArticle
-- StrategyItemKind
-- ExtractionTiers
-- AddSourceTool
+- .process()
 - GitHubClient
-- InterestModel
+- DeveloperView
+- IngestError
+- StrategyItemKind
+- Sendable
+- FakeTransport
+- XCTestCase
+- KnowledgeStore
+- ExtractionTiers
+- Conversation
+- Foundation
+- .fetchURL()
 - ActionRequest
-- ExtractedGraph
-- ReferenceLedger
+- PipelineRunner
+- InterestModel
+- .extract()
+- RawItem
+- .dismiss()
+- HybridSearchIndex
+- Digest
 - Phase 5: Hardening
+- ConversationView
+- BYOKLLMKit
 - Pipeline module (ingestion, graph, searc
 - GraphRAG
-- EmbeddingModel
-- .load()
-- RecordStrategyItemTool
-- .dismiss()
-- AppLockCoordinator
-- Invariant D5: Private content never goes
 - .items()
+- ExtractedGraph
+- .load()
+- View
+- Choice
+- Invariant D5: Private content never goes
 - Dependency
-- Digest
-- ProjectLink
+- SwiftData
 - ThemeStrengthCache
-- BackgroundWork
-- SourceFetcher
-- .fetchURL()
+- ProjectSnapshot
+- RecordStrategyItemTool
+- LexicalIndex
+- OnboardingProposal
+- DigestSummaryRequest
 - DigestBuilder
-- HybridSearchIndex
+- .retrieve()
+- .send()
+- .article()
 - Ingestion pipeline: fetch, clean, triage
 - BYOKLLMKit
-- AddSourceView
-- Scenario
+- GraphSnapshot
+- SearchDocument
+- Article
+- SearchHit
+- .build()
 - SmartWardKit.KnowledgeStore (SwiftData m
 - Article (SwiftData model)
-- .makeContainer()
-- XCTestCase
+- .fetch()
 - Approval Before Actions
-- .body
-- GitHubRepo
+- GitHubRepoPicker
+- OnboardingView
 - Strategist Layer
-- IngestController
-- GitHubAccount
 - DigestCluster
-- DigestSummaryRequest
-- .body
+- Scenario
 - Kind
-- GraphSnapshot
+- AskStrategistIntent
+- GraphCanvas
 - CodingKeys
 - SmartWard (iOS Application Target)
 - ContextAssembler token budget and fencin
-- .data()
-- SearchDocument
+- GitHubAccount
+- EntityResolver
+- .plan()
+- .messages()
 - .testToolsOutsideTheModeAreNeverOffered(
 - BackupView
-- .send()
-- .canonicalize()
+- SmartWardIntents.swift
 - SmartWardShare (Share Extension Target)
-- AppLockPolicy
-- .apply()
-- FoundationModelsEntityExtractor
-- Node
-- .process()
-- Choice
+- .request()
+- GraphIndexer
+- RetrievalFixture
 - SmartWard XcodeGen Project Spec
 - Inference Layer
-- GraphView
 - LibraryArchive
 - SourceKind
-- FakeTransport
+- .data()
+- SeededRandom
+- .canonicalize()
 - Accessibility Verification Pass
 - GraphRAG Latency Budget (NFR-4: p95 unde
 - ThemeNode (SwiftData model)
-- SearchHit
-- GitHubError
-- .render()
-- FakeClock
-- AppLockController
-- DeveloperView
+- OnboardingReviewView
 - What the Simulator Can't Show
 - Presentation Layer (SwiftUI)
-- FakeEmbedder
-- .session()
-- .apply()
-- .score()
-- String
 - FakeSummarizer
-- SourcesView
-- FakeBiometrics
+- ThemeDetailView
+- SmartWardApp
+- ChatController
 - Prompt-injection defense
+- ExtractedArticle
 - ArticleStage
 - TopK
+- AppTab
+- FoundationModelsEntityExtractor
+- SourceKindOption
 - StrategistCore (tool loop, prompts, brie
 - Packages/SmartWardKit (local SPM package
 - SmartWardKit (Local Swift Package)
-- .build()
-- AppTab
-- DailyBudget
+- GitHubError
+- EmbeddingModel
+- Observation
+- ArchiveError
 - Graph View
 - ArticleReaderView
-- ReadingView
 - ActivitySheet
 - UntrustedText (body/attribute inside its
+- StrategyItemsSection
+- FoundationModelsRelevanceJudge
 - Living Project Brief
-- .color()
-- PINOutcome
-- BriefRevisionStatus
-- Apple Intelligence Preflight
-- .isAcceptable()
+- RepoSyncTests
+- BackgroundWork.swift
 - KnowledgeSchema
-- FakePIN
+- Apple Intelligence Preflight
+- IntentFailure
+- BYOKDigestSummarizer
 - graphify_pipeline.py
-- AppStore
+- ExtractionPrompt
 - PackageDescription
 
 ## God Nodes (most connected - your core abstractions)
@@ -150,9 +154,9 @@
 5. `Source` - 48 edges
 6. `ThemeNode` - 48 edges
 7. `Conversation` - 36 edges
-8. `HybridSearchIndex` - 35 edges
-9. `LibraryArchive` - 34 edges
-10. `SourceKind` - 33 edges
+8. `ProjectLink` - 35 edges
+9. `HybridSearchIndex` - 35 edges
+10. `LibraryArchive` - 34 edges
 
 ## Surprising Connections (you probably didn't know these)
 - `.hasFollowedSources` --references--> `Source`  [INFERRED]
@@ -180,439 +184,439 @@
 - **App Group Shared-Container Mechanism (extension writes, app imports)** — project_app_group_entitlement, project_shareinbox, project_smartward, project_smartwardshare, docs_device_testing_app_group_registration [INFERRED 0.85]
 - **Prompt isolation and approval boundary** — readme_approval_before_actions, readme_reference_fencing, readme_prompt_fence_escaping, readme_red_team_suite, readme_poisoned_corpus, readme_private_content_policy, claude_untrustedtext, claude_contextpolicy, claude_action_confirmation, claude_untrusted_text_rule [INFERRED 0.85]
 
-## Communities (132 total, 2 thin omitted)
+## Communities (136 total, 2 thin omitted)
 
-### Community 0 - "KnowledgeStore"
+### Community 0 - "AppLockCoordinator"
 Cohesion: 0.05
-Nodes (28): Accelerate, AppIntents, BackgroundTasks, BYOKLLMKit, CommonCrypto, CryptoKit, Foundation, FoundationModels (+20 more)
+Nodes (48): AnyObject, AppLock, BiometricLockKit, BiometricResult, BiometricUnavailable, BiometryType, AppLockCoordinator, .biometryName (+40 more)
 
-### Community 1 - "Sendable"
-Cohesion: 0.08
-Nodes (60): Codable, Equatable, Identifiable, AliasRecord, ArchiveError, .errorDescription, newerVersion, notAnArchive (+52 more)
+### Community 1 - "ModelFallback"
+Cohesion: 0.05
+Nodes (42): Alternatives, LLMCompleting, LLMCompletionError, FallbackLLM, ModelFallback, AsyncThrowingStream, Bool, CatalogEntry (+34 more)
 
-### Community 2 - "ModelFallback"
+### Community 2 - "SharedInbox"
 Cohesion: 0.06
-Nodes (40): Alternatives, LLMCompleting, LLMCompletionError, FallbackLLM, ModelFallback, AsyncThrowingStream, Bool, CatalogEntry (+32 more)
+Nodes (34): JSONDecoder, JSONEncoder, NSExtensionContext, Result, SharedImport, Date, Int, ModelContext (+26 more)
 
-### Community 3 - "SourceKindOption"
-Cohesion: 0.06
-Nodes (47): AppEntity, AppEnum, AppIntent, AppShortcut, AppShortcutsProvider, DisplayRepresentation, EntityQuery, IntentAuthenticationPolicy (+39 more)
-
-### Community 4 - "SharedInbox"
-Cohesion: 0.06
-Nodes (30): JSONDecoder, JSONEncoder, NSExtensionContext, Result, SharedImport, Date, Int, ModelContext (+22 more)
-
-### Community 5 - "RetrievedPassage"
-Cohesion: 0.06
-Nodes (39): GraphRetriever, RetrievedPassage, Bool, Float, ModelContext, String, UUID, Why (+31 more)
-
-### Community 6 - "Article"
-Cohesion: 0.10
-Nodes (27): Article, Chunk, InterestProfile, Mention, MergeSuggestion, Message, ReadingSignal, StrategyItem (+19 more)
-
-### Community 7 - ".record()"
+### Community 3 - "DailyBudget"
 Cohesion: 0.09
-Nodes (29): Line, .id, Price, PriceBook, Bool, Calendar, Date, Double (+21 more)
+Nodes (31): DailyBudget, Line, .id, Price, PriceBook, Bool, Calendar, Date (+23 more)
 
-### Community 8 - "View"
-Cohesion: 0.06
-Nodes (40): BriefDiff, BriefError, empty, .errorDescription, notPending, outdated, unchanged, Line (+32 more)
+### Community 4 - "ThemeNode"
+Cohesion: 0.12
+Nodes (23): BriefRevision, EntityAlias, InterestProfile, Mention, MergeSuggestion, ProjectBrief, ReadingSignal, Date (+15 more)
 
-### Community 9 - "OnboardingView"
-Cohesion: 0.06
-Nodes (29): project, ConversationHistory, Entry, Date, Int, LLMChatMessage, String, OnboardingSynthesizer (+21 more)
-
-### Community 10 - "ThemeNode"
-Cohesion: 0.10
-Nodes (21): EntityAlias, Data, ThemeNode, EntityResolver, Resolution, Bool, Float, ModelContext (+13 more)
-
-### Community 11 - "LibraryFixture"
+### Community 5 - "LibraryFixture"
 Cohesion: 0.08
 Nodes (27): BackupError, .errorDescription, newerVersion, notABackup, passphraseTooShort, wrongPassphraseOrDamaged, EncryptedBackup, Data (+19 more)
 
-### Community 12 - "Conversation"
-Cohesion: 0.07
-Nodes (27): ContextPolicy, Bool, Conversation, .mode, ConversationMode, brainstorm, critique, onboarding (+19 more)
-
-### Community 13 - "GitHubDeviceFlow"
+### Community 6 - ".makeContainer()"
 Cohesion: 0.09
-Nodes (26): HTTPTransport, GitHubDeviceCode, GitHubDeviceFlow, GitHubDeviceFlowError, denied, .errorDescription, expired, failed (+18 more)
+Nodes (16): Bool, ModelContainer, Set, String, ProjectLink, .kind, .sendsContentToBYOK, ProjectLinkKind (+8 more)
 
-### Community 14 - "Project"
-Cohesion: 0.14
-Nodes (17): BriefRevision, Project, ProjectBrief, BriefEditing, tooLong, BriefReviser, Suggestion, Date (+9 more)
+### Community 7 - "Project"
+Cohesion: 0.11
+Nodes (20): Project, BriefEditing, tooLong, BriefReviser, Suggestion, Date, LLMCompleting, LLMProvider (+12 more)
 
-### Community 15 - "StrategistRunner"
+### Community 8 - ".score()"
+Cohesion: 0.07
+Nodes (28): Date, Double, TimeInterval, ThemeStrength, GraphExport, Date, LibraryArchive, String (+20 more)
+
+### Community 9 - "GitHubDeviceFlow"
+Cohesion: 0.09
+Nodes (27): HTTPTransport, GitHubDeviceCode, GitHubDeviceFlow, GitHubDeviceFlowError, denied, .errorDescription, expired, failed (+19 more)
+
+### Community 10 - "RetrievedPassage"
+Cohesion: 0.11
+Nodes (19): AddSourceTool, .definition, .kinds, Arguments, FetchURLTool, .definition, JSONValue, LLMTool (+11 more)
+
+### Community 11 - "StrategistRunner"
 Cohesion: 0.14
 Nodes (21): StrategistRunner, Int, LLMCompleting, EchoTool, .definition, FailingTool, .definition, GuardedTool (+13 more)
 
-### Community 16 - "PipelineRunner"
-Cohesion: 0.14
-Nodes (18): ArticleIndexer, PipelineRunner, .stages, Report, Bool, Date, Double, Int (+10 more)
+### Community 12 - ".process()"
+Cohesion: 0.08
+Nodes (26): BGContinuedProcessingTask, BackgroundWork, TimeInterval, FullTextError, .errorDescription, nothingMore, IngestController, Bool (+18 more)
 
-### Community 17 - "IngestError"
-Cohesion: 0.11
-Nodes (24): IngestError, backingOff, disallowedByRobots, .errorDescription, http, invalidResponse, invalidURL, notAFeed (+16 more)
-
-### Community 18 - "PerfTrace"
-Cohesion: 0.11
-Nodes (19): DispatchTime, os, PerfTrace, .names, .samples, Sample, Summary, Date (+11 more)
-
-### Community 19 - "ExtractedArticle"
-Cohesion: 0.14
-Nodes (11): ArticleExtractor, ExtractedArticle, Bool, Date, Element, String, URL, ArticleExtractorTests (+3 more)
-
-### Community 20 - "StrategyItemKind"
+### Community 13 - "GitHubClient"
 Cohesion: 0.12
-Nodes (15): .kind, StrategyItemKind, actionItem, assumption, decision, openQuestion, risk, Item (+7 more)
+Nodes (16): Decodable, GitHubClient, .isAuthenticated, GitHubRepo, .id, GitHubUser, Bool, Data (+8 more)
+
+### Community 14 - "DeveloperView"
+Cohesion: 0.10
+Nodes (23): DispatchTime, os, PerfTrace, .names, .samples, Sample, Summary, Date (+15 more)
+
+### Community 15 - "IngestError"
+Cohesion: 0.11
+Nodes (25): IngestError, backingOff, disallowedByRobots, .errorDescription, http, invalidResponse, invalidURL, notAFeed (+17 more)
+
+### Community 16 - "StrategyItemKind"
+Cohesion: 0.07
+Nodes (31): CaseIterable, .status, BriefRevisionStatus, accepted, pending, rejected, superseded, StrategyItem (+23 more)
+
+### Community 17 - "Sendable"
+Cohesion: 0.28
+Nodes (29): Codable, Equatable, AliasRecord, ArticleRecord, BriefRecord, BriefRevisionRecord, ChunkRecord, ConversationRecord (+21 more)
+
+### Community 18 - "FakeTransport"
+Cohesion: 0.15
+Nodes (13): SourceDescriptor, SourceFetcher, UUID, FakeTransport, Data, HTTPURLResponse, URLRequest, FakeClock (+5 more)
+
+### Community 19 - "XCTestCase"
+Cohesion: 0.10
+Nodes (14): ContextPolicy, Bool, Chunk, Bool, Data, Int, ContextPolicyTests, makeContext() (+6 more)
+
+### Community 20 - "KnowledgeStore"
+Cohesion: 0.15
+Nodes (5): IngestKit, KnowledgeStore, Pipeline, RetrievalKit, XCTest
 
 ### Community 21 - "ExtractionTiers"
-Cohesion: 0.12
+Cohesion: 0.11
 Nodes (18): EntityExtracting, ExtractionTier, byok, onDevice, ExtractionTiers, FakeCompletion, FakeExtractor, GraphIndexingTests (+10 more)
 
-### Community 22 - "AddSourceTool"
-Cohesion: 0.14
-Nodes (16): AddSourceTool, .definition, .kinds, Arguments, FetchURLTool, .definition, JSONValue, LLMTool (+8 more)
+### Community 22 - "Conversation"
+Cohesion: 0.11
+Nodes (21): Conversation, .mode, ConversationMode, brainstorm, critique, onboarding, researchPlan, weeklyReview (+13 more)
 
-### Community 23 - "GitHubClient"
-Cohesion: 0.18
-Nodes (10): GitHubClient, .isAuthenticated, GitHubUser, Data, HTTPURLResponse, Set, String, T (+2 more)
+### Community 23 - "Foundation"
+Cohesion: 0.08
+Nodes (10): CommonCrypto, CryptoKit, Foundation, GraphKit, NaturalLanguage, Security, AppStore, Error (+2 more)
 
-### Community 24 - "InterestModel"
-Cohesion: 0.14
-Nodes (17): Interest, InterestModel, .isEmpty, Strength, balanced, off, strict, .threshold (+9 more)
+### Community 24 - ".fetchURL()"
+Cohesion: 0.17
+Nodes (10): SourceEndpoint, Bool, Data, HTTPURLResponse, String, URL, SourceEndpointTests, String (+2 more)
 
 ### Community 25 - "ActionRequest"
 Cohesion: 0.13
 Nodes (21): LocalizedError, ActionRequest, StrategistError, .errorDescription, incompleteResponse, StrategistEvent, awaitingConfirmation, confirmationResolved (+13 more)
 
-### Community 26 - "ExtractedGraph"
-Cohesion: 0.17
-Nodes (13): BYOKExtractor, Entity, ExtractedGraph, ExtractionOutput, Relation, LLMCompleting, LLMProvider, LLMRequest (+5 more)
+### Community 26 - "PipelineRunner"
+Cohesion: 0.16
+Nodes (16): FullTextFetching, PipelineRunner, .stages, Report, Bool, Date, Double, ModelContext (+8 more)
 
-### Community 27 - "ReferenceLedger"
+### Community 27 - "InterestModel"
+Cohesion: 0.15
+Nodes (17): Interest, InterestModel, .isEmpty, Strength, balanced, off, strict, .threshold (+9 more)
+
+### Community 28 - ".extract()"
 Cohesion: 0.18
-Nodes (13): Arguments, GraphNeighborsTool, .definition, OpenArticleTool, .definition, ReferenceLedger, SearchCorpusTool, .definition (+5 more)
+Nodes (7): ArticleExtractor, Bool, Element, String, URL, ArticleExtractorTests, Unicode
 
-### Community 28 - "Phase 5: Hardening"
+### Community 29 - "RawItem"
+Cohesion: 0.16
+Nodes (13): FeedIngest, Result, Bool, Date, Error, Int, ModelContext, String (+5 more)
+
+### Community 30 - ".dismiss()"
+Cohesion: 0.12
+Nodes (20): LockScreen, PrivacyCover, .body, SecuritySettingsSection, .body, .lockBinding, .toggleTitle, SetPINView (+12 more)
+
+### Community 31 - "HybridSearchIndex"
+Cohesion: 0.17
+Nodes (11): OptionSet, HybridSearchIndex, .documentCount, .documentIDs, .needsRebuild, MatchKind, Float, Int (+3 more)
+
+### Community 32 - "Digest"
+Cohesion: 0.13
+Nodes (18): Digest, .clusters, Bool, Date, DigestController, .notificationsEnabled, FoundationModelsDigestSummarizer, Bool (+10 more)
+
+### Community 33 - "Phase 5: Hardening"
 Cohesion: 0.14
 Nodes (24): Empty States and Accessibility, App Lock (Face ID/Touch ID with PIN fallback), BM25 Lexical Search (compound tokens kept whole), Bounded-heap Top-K Rankings, Device Measurement (Instruments signposts), docs/DEVICE_TESTING.md, Export (Settings to Export), GraphML Export (Gephi or yEd) (+16 more)
 
-### Community 29 - "Pipeline module (ingestion, graph, searc"
+### Community 34 - "ConversationView"
+Cohesion: 0.12
+Nodes (19): ActionConfirmationCard, .body, ConversationView, .body, .composer, .messages, .missingKeyWarning, EmptyChatHint (+11 more)
+
+### Community 35 - "BYOKLLMKit"
+Cohesion: 0.13
+Nodes (5): BYOKLLMKit, ModelCatalogKit, ActionTools, BriefOrigin, StrategistCore
+
+### Community 36 - "Pipeline module (ingestion, graph, searc"
 Cohesion: 0.14
 Nodes (23): ArticleIndexer (search index built and updated in place), DigestBuilder (clustering, ranking, tiered summaries), EmbeddingModel (vectors never compared across models), EntityResolver (names resolve to one node), GraphEditing (merge and split, writes user aliases), GraphExport (GraphML via GraphKit), GraphIndexer (extraction routing tiers, D2/D5), OnDeviceKit GraphKit (+15 more)
 
-### Community 30 - "GraphRAG"
+### Community 37 - "GraphRAG"
 Cohesion: 0.17
 Nodes (23): B1 GraphRAG over the SwiftData graph, B4 Graph view drawn natively in SwiftUI, C3 GraphRetrievalKit needs an injectable entity index, C5 Store vectors as binary Data, not JSON snapshots, C7 Explicit Mention join entity replaces many-to-many, Chunk (SwiftData model), Phase 0 embedding bake-off, FR-11 GraphRAG every turn with why-retrieved (+15 more)
 
-### Community 31 - "EmbeddingModel"
-Cohesion: 0.17
-Nodes (13): EmbeddingModel, EmbeddingProviding, String, GraphIndexer, .suggestionsAdded, GraphLinker, Result, Date (+5 more)
+### Community 38 - ".items()"
+Cohesion: 0.16
+Nodes (11): NSObject, Entry, .url, FeedParser, FeedXMLDelegate, ParsedFeed, Data, String (+3 more)
 
-### Community 32 - ".load()"
+### Community 39 - "ExtractedGraph"
+Cohesion: 0.19
+Nodes (12): BYOKExtractor, Entity, ExtractedGraph, ExtractionOutput, Relation, LLMCompleting, LLMProvider, LLMRequest (+4 more)
+
+### Community 40 - ".load()"
 Cohesion: 0.15
 Nodes (15): SampleLibrary, Size, SplitMix, Bool, Date, Double, Float, Int (+7 more)
 
-### Community 33 - "RecordStrategyItemTool"
-Cohesion: 0.16
-Nodes (13): Arguments, ProjectStateTool, .definition, invalidArguments, ProposeBriefUpdateTool, .definition, RecordStrategyItemTool, .definition (+5 more)
+### Community 41 - "View"
+Cohesion: 0.11
+Nodes (20): GitHubSettingsSection, KnowledgeGraphSettingsSection, .body, .providersWithKeys, LLMProvider, ReadingSettingsSection, .body, DigestSettingsSection (+12 more)
 
-### Community 34 - ".dismiss()"
-Cohesion: 0.12
-Nodes (18): ModelContext, syncGitHubLinks(), GitHubProjectSection, .body, .dependencies, .repoLinks, GitHubRepoPicker, .alreadyLinked (+10 more)
+### Community 42 - "Choice"
+Cohesion: 0.11
+Nodes (20): AddSourceView, .body, .defaultName, .storedURL, .trimmedInput, Choice, arxiv, feed (+12 more)
 
-### Community 35 - "AppLockCoordinator"
-Cohesion: 0.19
-Nodes (12): AnyObject, AppLockCoordinator, .biometryName, .isPINLockedOut, .pinLockoutRemaining, BiometricService, BiometricUnlocking, PINService (+4 more)
-
-### Community 36 - "Invariant D5: Private content never goes"
+### Community 43 - "Invariant D5: Private content never goes"
 Cohesion: 0.12
 Nodes (22): ArticleExtractor (SwiftSoup HTML to clean text), ContextPolicy (provider-context filter), Invariant D5: Private content never goes to a BYOK provider, Plan Decision IDs D1-D6 (referenced in code), Invariant: extraction routing lives in GraphIndexer.tiers(for:), GitHubClient (GET-only), GitHubTokenStore (device-only Keychain), IngestKit (source ingestion and GitHub) (+14 more)
 
-### Community 37 - ".items()"
-Cohesion: 0.17
-Nodes (11): NSObject, Entry, .url, FeedParser, FeedXMLDelegate, ParsedFeed, Data, String (+3 more)
-
-### Community 38 - "Dependency"
+### Community 44 - "Dependency"
 Cohesion: 0.27
 Nodes (4): Dependency, ManifestParser, String, ManifestParserTests
 
-### Community 39 - "Digest"
-Cohesion: 0.15
-Nodes (16): Digest, .clusters, Bool, Date, DigestController, .notificationsEnabled, Bool, ModelContext (+8 more)
+### Community 45 - "SwiftData"
+Cohesion: 0.19
+Nodes (3): FoundationModels, SwiftData, SwiftUI
 
-### Community 40 - "ProjectLink"
-Cohesion: 0.14
-Nodes (12): Set, String, ProjectLink, .kind, .sendsContentToBYOK, ProjectLinkKind, githubRepo, url (+4 more)
-
-### Community 41 - "ThemeStrengthCache"
+### Community 46 - "ThemeStrengthCache"
 Cohesion: 0.20
 Nodes (13): Entry, Fingerprint, Date, Double, Int, ModelContext, TimeInterval, UUID (+5 more)
 
-### Community 42 - "BackgroundWork"
-Cohesion: 0.13
-Nodes (12): App, BGContinuedProcessingTask, Scene, SmartWardApp, .body, BackgroundWork, TimeInterval, .body (+4 more)
+### Community 47 - "ProjectSnapshot"
+Cohesion: 0.20
+Nodes (7): Item, ProjectSnapshot, StrategistPrompt, Bool, Set, String, StrategistPromptTests
 
-### Community 43 - "SourceFetcher"
-Cohesion: 0.23
-Nodes (7): SourceDescriptor, SourceFetcher, Bool, Data, HTTPURLResponse, UUID, SourceFetcherTests
+### Community 48 - "RecordStrategyItemTool"
+Cohesion: 0.17
+Nodes (12): Arguments, ProjectStateTool, .definition, invalidArguments, ProposeBriefUpdateTool, .definition, RecordStrategyItemTool, .definition (+4 more)
 
-### Community 44 - ".fetchURL()"
-Cohesion: 0.23
-Nodes (8): SourceEndpoint, String, URL, SourceEndpointTests, String, URL, .defaultName, .storedURL
+### Community 49 - "LexicalIndex"
+Cohesion: 0.17
+Nodes (8): EmbeddingProviding, LexicalIndex, .count, FakeEmbedder, .dimension, Int, HybridSearchTests, LexicalIndexTests
 
-### Community 45 - "DigestBuilder"
+### Community 50 - "OnboardingProposal"
+Cohesion: 0.15
+Nodes (15): Identifiable, ApplyResult, OnboardingProposal, .schema, ProjectProposal, .id, SourceProposal, .id (+7 more)
+
+### Community 51 - "DigestSummaryRequest"
+Cohesion: 0.19
+Nodes (8): DigestPrompt, DigestSummary, DigestSummaryRequest, Excerpt, LLMUsage, String, String, UntrustedText
+
+### Community 52 - "DigestBuilder"
 Cohesion: 0.21
 Nodes (10): DigestBuilder, DigestSummarizing, Group, Bool, Date, Int, ModelContext, TimeInterval (+2 more)
 
-### Community 46 - "HybridSearchIndex"
-Cohesion: 0.20
-Nodes (10): HybridSearchIndex, .documentCount, .documentIDs, .needsRebuild, Float, Int, IncrementalIndexTests, Int (+2 more)
+### Community 53 - ".retrieve()"
+Cohesion: 0.16
+Nodes (13): GraphRetriever, Bool, Float, ModelContext, String, UUID, Why, connected (+5 more)
 
-### Community 47 - "Ingestion pipeline: fetch, clean, triage"
+### Community 54 - ".send()"
+Cohesion: 0.19
+Nodes (13): Arguments, GraphNeighborsTool, .definition, OpenArticleTool, .definition, SearchCorpusTool, .definition, LLMTool (+5 more)
+
+### Community 55 - ".article()"
+Cohesion: 0.20
+Nodes (9): FakeFullText, FixedJudge, PipelineRunnerTests, Bool, Float, ModelContainer, ModelContext, Set (+1 more)
+
+### Community 56 - "Ingestion pipeline: fetch, clean, triage"
 Cohesion: 0.22
 Nodes (19): ArticleExtractor, BGTaskScheduler background tasks, FR-1 Add, edit, disable and remove sources, FR-22 GitHub integration and repo sync, FR-2 Fetch new items manually and in background, FR-3 Share extension ingestion, GitHub option A: paste repo links only, GitHubClient (+11 more)
 
-### Community 48 - "BYOKLLMKit"
+### Community 57 - "BYOKLLMKit"
 Cohesion: 0.16
 Nodes (19): BiometricLockKit, BYOKLLMKit, C1 Anthropic SSE streaming is missing from BYOKLLMKit, CloudKit-compatible schema rules, Evaluation harness, FR-16 BYOK key management and model picker, FR-19 PIN and biometric app lock, Inference tiers T0-T3 (+11 more)
 
-### Community 49 - "AddSourceView"
-Cohesion: 0.16
-Nodes (15): CaseIterable, AddSourceView, .body, .trimmedInput, Filter, all, .id, starred (+7 more)
+### Community 58 - "GraphSnapshot"
+Cohesion: 0.18
+Nodes (16): Hashable, ForceLayout, GraphSnapshot, Point, GraphSnapshotTests, GraphView, .asList, .body (+8 more)
 
-### Community 50 - "Scenario"
-Cohesion: 0.20
-Nodes (12): Attack, RecordingFetcher, RedTeamTests, Scenario, Bool, JSONValue, LLMChatMessage, LLMToolCall (+4 more)
+### Community 59 - "SearchDocument"
+Cohesion: 0.22
+Nodes (11): Accelerate, SearchCorpus, SearchDocument, Bool, ModelContext, Set, String, UUID (+3 more)
 
-### Community 51 - "SmartWardKit.KnowledgeStore (SwiftData m"
+### Community 60 - "Article"
+Cohesion: 0.15
+Nodes (13): Article, ArticleRow, .body, .content, ReadingView, .emptyState, .filteredOutCount, .hasFollowedSources (+5 more)
+
+### Community 61 - "SearchHit"
+Cohesion: 0.18
+Nodes (13): RankedDocument, SearchHit, .id, Double, MatchBadge, .body, SearchController, SearchResultsView (+5 more)
+
+### Community 62 - ".build()"
+Cohesion: 0.22
+Nodes (13): Edge, Node, Scope, all, recent, source, Bool, Date (+5 more)
+
+### Community 63 - "SmartWardKit.KnowledgeStore (SwiftData m"
 Cohesion: 0.18
 Nodes (17): Invariant: new models and properties go into LibraryArchive in the same change, Invariant: schema stays CloudKit-compatible (PLAN section 4), DailyBudget (background provider spend cap), Invariant: strength and weight are derived, not stored counters, EncryptedBackup (single-file library backup), Invariant: enum-backed fields store raw String with typed fallback property, KnowledgeSchema.models (schema registry), SmartWardKit.KnowledgeStore (SwiftData models and services) (+9 more)
 
-### Community 52 - "Article (SwiftData model)"
+### Community 64 - "Article (SwiftData model)"
 Cohesion: 0.15
 Nodes (17): Article (SwiftData model), D1 Day-one onboarding interview, FeedFetcher, FR-0 Onboarding interview, FR-23 Dependency radar, FR-4 Triage by relevance to profile and projects, FR-9 Projects with a living Project Brief, GitHubReleases adapter (+9 more)
 
-### Community 53 - ".makeContainer()"
-Cohesion: 0.26
-Nodes (6): RawItem, FetchedSource, Bool, ModelContainer, Source, FeedIngestTests
+### Community 65 - ".fetch()"
+Cohesion: 0.27
+Nodes (8): ApplyResult, Document, RepoSnapshot, RepoSync, Date, Int, ModelContext, String
 
-### Community 54 - "XCTestCase"
-Cohesion: 0.15
-Nodes (11): CanonicalURLTests, PerfTraceTests, PerformanceTests, SeededRandom, String, TimeInterval, UInt64, Void (+3 more)
-
-### Community 55 - "Approval Before Actions"
+### Community 66 - "Approval Before Actions"
 Cohesion: 0.18
 Nodes (17): add_source Tool, Add to SmartWard (Share Sheet), App Shell (Tabs, Projects, Settings), Approval Before Actions, Background Refresh (hourly polling, charging, system progress), BYOK Key Settings (bring your own keys), Four Strategist Chat Modes, Daily Budget (switches background work to on-device when spent) (+9 more)
 
-### Community 56 - ".body"
-Cohesion: 0.17
-Nodes (13): AppLock, BiometricLockKit, PINLockKit, LockScreen, PrivacyCover, .body, SecuritySettingsSection, .lockBinding (+5 more)
+### Community 67 - "GitHubRepoPicker"
+Cohesion: 0.14
+Nodes (14): ModelContext, syncGitHubLinks(), GitHubProjectSection, .body, .dependencies, .repoLinks, GitHubRepoPicker, .alreadyLinked (+6 more)
 
-### Community 57 - "GitHubRepo"
-Cohesion: 0.19
-Nodes (10): Decodable, GitHubRepo, .id, Bool, Document, RepoSnapshot, String, RepoSyncTests (+2 more)
+### Community 68 - "OnboardingView"
+Cohesion: 0.16
+Nodes (14): OnboardingLinksSheet, .body, OnboardingView, .appleIntelligenceStatus, .body, .canStart, .hasUserInput, .interview (+6 more)
 
-### Community 58 - "Strategist Layer"
+### Community 69 - "Strategist Layer"
 Cohesion: 0.20
 Nodes (16): BriefService living document watermark, C6 One Strategist with a tool-use loop and modes, Conversation (SwiftData model), ConversationCompactor rolling summary, FR-10 Project-scoped conversations with modes, FR-12 Strategist tool set, Message (SwiftData model), ModeSelector (+8 more)
 
-### Community 59 - "IngestController"
-Cohesion: 0.17
-Nodes (12): Bool, FullTextError, .errorDescription, nothingMore, IngestController, Bool, ModelContext, Set (+4 more)
-
-### Community 60 - "GitHubAccount"
-Cohesion: 0.21
-Nodes (10): GitHubTokenStore, Bool, String, GitHubAccount, .client, .hasToken, Bool, String (+2 more)
-
-### Community 61 - "DigestCluster"
+### Community 70 - "DigestCluster"
 Cohesion: 0.28
 Nodes (11): ArticleRef, DigestCluster, ProjectRef, Double, Int, String, UUID, DigestClusterSection (+3 more)
 
-### Community 62 - "DigestSummaryRequest"
+### Community 71 - "Scenario"
 Cohesion: 0.23
-Nodes (9): BYOKDigestSummarizer, DigestSummary, DigestSummaryRequest, Excerpt, LLMCompleting, LLMProvider, LLMUsage, String (+1 more)
+Nodes (11): Attack, RedTeamTests, Scenario, .system, Bool, JSONValue, LLMChatMessage, LLMToolCall (+3 more)
 
-### Community 63 - ".body"
-Cohesion: 0.12
-Nodes (14): KnowledgeGraphSettingsSection, .body, .providersWithKeys, LLMProvider, ReadingSettingsSection, .body, DigestSettingsSection, .body (+6 more)
-
-### Community 64 - "Kind"
+### Community 72 - "Kind"
 Cohesion: 0.16
 Nodes (15): ExportView, .body, Kind, .detail, .fileExtension, graph, .id, library (+7 more)
 
-### Community 65 - "GraphSnapshot"
-Cohesion: 0.22
-Nodes (14): CGFloat, GraphSnapshot, Connection, .id, GraphCanvas, .body, Int, UUID (+6 more)
+### Community 73 - "AskStrategistIntent"
+Cohesion: 0.20
+Nodes (13): AppIntent, AppShortcut, AppShortcutsProvider, IntentAuthenticationPolicy, IntentResult, LocalizedStringResource, ParameterSummary, ProvidesDialog (+5 more)
 
-### Community 66 - "CodingKeys"
+### Community 74 - "GraphCanvas"
+Cohesion: 0.20
+Nodes (12): CGFloat, Color, .body, ThemeStyle, GraphCanvas, .body, UUID, Void (+4 more)
+
+### Community 75 - "CodingKeys"
 Cohesion: 0.13
 Nodes (15): CodingKey, CodingKeys, defaultBranch, description, fullName, htmlURL, isPrivate, pushedAt (+7 more)
 
-### Community 67 - "SmartWard (iOS Application Target)"
+### Community 76 - "SmartWard (iOS Application Target)"
 Cohesion: 0.23
 Nodes (15): App Lock: Face ID with Grace Period, App Lock PIN Fallback, App Switcher Privacy Cover, SmartWard App Icon (product icon image), AppIcon Asset Catalog Name, AppLock (SmartWardKit Library Product), BiometricLockKit (OnDeviceKit Library Product), BYOKLLMKit (OnDeviceKit Library Product) (+7 more)
 
-### Community 68 - "ContextAssembler token budget and fencin"
+### Community 77 - "ContextAssembler token budget and fencin"
 Cohesion: 0.18
 Nodes (15): B3 Extraction routing by content class, BYOKExtractor, C2 BYOKLLMKit lacks tool calling and structured output, ContextAssembler token budget and fencing, Conversation indexing pipeline, D2 Conversations may be extracted by BYOK, D5 Private repos extracted on-device only, EntityExtracting protocol (+7 more)
 
-### Community 69 - ".data()"
-Cohesion: 0.21
-Nodes (8): Data, Float, VectorCoding, FixedJudge, Bool, Float, String, VectorCodingTests
+### Community 78 - "GitHubAccount"
+Cohesion: 0.23
+Nodes (9): GitHubTokenStore, Bool, String, GitHubAccount, .client, .hasToken, Bool, String (+1 more)
 
-### Community 70 - "SearchDocument"
-Cohesion: 0.25
-Nodes (8): SearchCorpus, SearchDocument, Bool, ModelContext, Set, UUID, Update, .isEmpty
+### Community 79 - "EntityResolver"
+Cohesion: 0.30
+Nodes (7): EntityResolver, Resolution, Bool, Float, ModelContext, String, UUID
 
-### Community 71 - ".testToolsOutsideTheModeAreNeverOffered("
+### Community 80 - ".plan()"
+Cohesion: 0.24
+Nodes (11): Plan, Refusal, alreadyFollowed, .errorDescription, invalidAddress, unsafeAddress, unsupportedKind, SourceIntake (+3 more)
+
+### Community 81 - ".messages()"
+Cohesion: 0.22
+Nodes (9): ConversationHistory, Entry, Date, Int, LLMChatMessage, String, ConversationHistoryTests, String (+1 more)
+
+### Community 82 - ".testToolsOutsideTheModeAreNeverOffered("
 Cohesion: 0.24
 Nodes (10): answer(), InjectedActionTests, PlaybackLLM, AsyncThrowingStream, Error, LLMRequest, LLMResponse, LLMStreamEvent (+2 more)
 
-### Community 72 - "BackupView"
+### Community 83 - "BackupView"
 Cohesion: 0.19
 Nodes (10): BackupView, .body, .canCreate, Bool, Data, Error, LibraryArchive, Result (+2 more)
 
-### Community 73 - ".send()"
-Cohesion: 0.25
-Nodes (8): CheckedContinuation, Never, ChatController, Bool, LLMCompleting, LLMProvider, ModelContext, String
+### Community 84 - "SmartWardIntents.swift"
+Cohesion: 0.24
+Nodes (10): AppEntity, AppIntents, DisplayRepresentation, EntityQuery, libraryContext(), ProjectEntity, .displayRepresentation, ProjectQuery (+2 more)
 
-### Community 74 - ".canonicalize()"
-Cohesion: 0.20
-Nodes (8): DateFormatter, ISO8601DateFormatter, CanonicalURL, FeedDate, Date, Set, String, URL
-
-### Community 75 - "SmartWardShare (Share Extension Target)"
+### Community 85 - "SmartWardShare (Share Extension Target)"
 Cohesion: 0.22
 Nodes (14): App Group Registration (group.com.intelligentdesignsllc.smartward), Share Extension Safari Capture Path, SmartWard/SmartWard.entitlements, App Group Entitlement (shared container app ↔ extension), com.intelligentdesignsllc.smartward Bundle Identifier, Bundle ID Prefix com.intelligentdesignsllc, PLAN FR-3 (Share Extension Requirement), ShareExtension/SmartWardShare.entitlements (+6 more)
 
-### Community 76 - "AppLockPolicy"
-Cohesion: 0.21
-Nodes (9): AppLockPolicy, BiometricStep, needsPIN, unlocked, Bool, Date, TimeInterval, AppLockPolicyTests (+1 more)
+### Community 86 - ".request()"
+Cohesion: 0.18
+Nodes (6): project, OnboardingSynthesizer, LLMChatMessage, LLMProvider, LLMRequest, OnboardingSynthesizerTests
 
-### Community 77 - ".apply()"
-Cohesion: 0.22
-Nodes (8): FeedIngest, Result, Date, Error, Int, ModelContext, String, TimeInterval
+### Community 87 - "GraphIndexer"
+Cohesion: 0.25
+Nodes (8): GraphIndexer, .suggestionsAdded, GraphLinker, Result, Date, Int, ModelContext, String
 
-### Community 78 - "FoundationModelsEntityExtractor"
-Cohesion: 0.22
-Nodes (9): ExtractionPrompt, .schema, JSONValue, ExtractionSettings, FoundationModelsEntityExtractor, GeneratedEntity, GeneratedGraph, GeneratedRelation (+1 more)
+### Community 88 - "RetrievalFixture"
+Cohesion: 0.23
+Nodes (8): GraphRetrieverTests, KeyedExtractor, RetrievalFixture, Bool, ModelContainer, ModelContext, String, UUID
 
-### Community 79 - "Node"
-Cohesion: 0.30
-Nodes (9): Edge, ForceLayout, Node, Point, Double, Int, String, UUID (+1 more)
-
-### Community 80 - ".process()"
-Cohesion: 0.19
-Nodes (11): Triage, FoundationModelsRelevanceJudge, PipelineController, .strength, Bool, ModelContext, String, TimeInterval (+3 more)
-
-### Community 81 - "Choice"
-Cohesion: 0.14
-Nodes (14): Choice, arxiv, feed, .footer, githubReleases, hackerNews, hfPapers, .id (+6 more)
-
-### Community 82 - "SmartWard XcodeGen Project Spec"
+### Community 89 - "SmartWard XcodeGen Project Spec"
 Cohesion: 0.22
 Nodes (13): DEVELOPMENT_TEAM Signing Setup, GitHub OAuth Device Flow Sign-In, iPhone 15 Pro / iOS 26 / Apple Intelligence Device Requirement, One-Time Device Setup, OpenRouter API Key During Onboarding, Apple Intelligence-Capable Device Floor (iPhone 15 Pro+), Automatic Code Sign Style, iOS 26.0 Deployment Target (+5 more)
 
-### Community 83 - "Inference Layer"
+### Community 90 - "Inference Layer"
 Cohesion: 0.21
 Nodes (13): AppleFMKit, D3 iPhone 15 Pro minimum device, DecisionKit proposed ODK module, DecisionProviding protocol seam, Inference Layer, Jev typed decision models, LangChain - What Is Jev?, LocalLLMKit dropped from scope (+5 more)
 
-### Community 84 - "GraphView"
-Cohesion: 0.24
-Nodes (12): Hashable, GraphView, .asList, .body, .graphScope, RefreshKey, ScopeChoice, all (+4 more)
-
-### Community 85 - "LibraryArchive"
+### Community 91 - "LibraryArchive"
 Cohesion: 0.23
 Nodes (9): LibraryArchive, RestoreError, .errorDescription, libraryNotEmpty, Bool, Int, ModelContext, String (+1 more)
 
-### Community 86 - "SourceKind"
+### Community 92 - "SourceKind"
 Cohesion: 0.15
 Nodes (13): .sourceKind, SourceKind, arxiv, githubReleases, githubRepo, hfPapers, hn, .isPolled (+5 more)
 
-### Community 87 - "FakeTransport"
-Cohesion: 0.23
-Nodes (7): FakeTransport, GitHubClientTests, GitHubDeviceCodeFixture, Data, HTTPURLResponse, URLRequest, Reply
+### Community 93 - ".data()"
+Cohesion: 0.24
+Nodes (7): Data, Float, VectorCoding, ModelContext, Set, UUID, VectorCodingTests
 
-### Community 88 - "Accessibility Verification Pass"
+### Community 94 - "SeededRandom"
+Cohesion: 0.19
+Nodes (8): PerformanceTests, SeededRandom, String, TimeInterval, UInt64, Void, TopKTests, RandomNumberGenerator
+
+### Community 95 - ".canonicalize()"
+Cohesion: 0.21
+Nodes (8): DateFormatter, ISO8601DateFormatter, CanonicalURL, FeedDate, Set, String, URL, CanonicalURLTests
+
+### Community 96 - "Accessibility Verification Pass"
 Cohesion: 0.24
 Nodes (12): Accessibility Verification Pass, CI Simulator Test Pipeline, Daily Budget Set to $0.25 Exhaustion Test, Device Testing Strategy, Largest Text Sizes / Dynamic Type Clipping Check, Onboarding Under 5 Minutes (Phase 1 Exit Criterion), Phase 5 Exit Criteria, A Real-Use Pass (+4 more)
 
-### Community 89 - "GraphRAG Latency Budget (NFR-4: p95 unde"
+### Community 97 - "GraphRAG Latency Budget (NFR-4: p95 unde"
 Cohesion: 0.29
 Nodes (12): -SmartWardDeveloper YES Launch Argument, Developer Sample Library (100,000 chunks / 3,000 themes / 30,000 connections, ~250 MB), Graph Snapshot Signpost Interval, GraphRAG Latency Budget (NFR-4: p95 under 500 ms at 100k chunks), GraphRAG Signpost Interval, Instruments Points of Interest Profiling, Latency Check (20 chat-style questions, p50/p95 report), Release Build Requirement for Latency Measurement (+4 more)
 
-### Community 90 - "ThemeNode (SwiftData model)"
+### Community 98 - "ThemeNode (SwiftData model)"
 Cohesion: 0.29
 Nodes (12): B2 Never auto-merge differing version tokens, Digest pipeline, Entity-resolution eval: false-merge rate under 2%, EntityAlias (SwiftData model), EntityResolver, FR-13 Theme-clustered digest with notification, FR-17 Usage and cost ledger with daily cap, FR-7 Entity resolution and manual merge/split (+4 more)
 
-### Community 91 - "SearchHit"
-Cohesion: 0.21
-Nodes (11): OptionSet, MatchKind, RankedDocument, SearchHit, .id, Double, MatchBadge, .body (+3 more)
+### Community 99 - "OnboardingReviewView"
+Cohesion: 0.26
+Nodes (9): OnboardingReviewView, .body, .confirmed, Binding, Bool, Int, Set, String (+1 more)
 
-### Community 92 - "GitHubError"
-Cohesion: 0.17
-Nodes (10): GitHubError, .errorDescription, http, invalidResponse, notFound, rateLimited, unauthorized, Date (+2 more)
-
-### Community 93 - ".render()"
-Cohesion: 0.27
-Nodes (5): DigestPrompt, ReferenceContext, String, UntrustedText, ResearchToolTests
-
-### Community 94 - "FakeClock"
-Cohesion: 0.36
-Nodes (4): FakeClock, PolitenessGateTests, Date, TimeInterval
-
-### Community 95 - "AppLockController"
-Cohesion: 0.23
-Nodes (7): ScenePhase, AppLockController, .isEnabled, Bool, Date, String, .body
-
-### Community 96 - "DeveloperView"
-Cohesion: 0.29
-Nodes (7): DeveloperSettings, .isEnabled, DeveloperView, .body, Bool, Double, String
-
-### Community 97 - "What the Simulator Can't Show"
+### Community 100 - "What the Simulator Can't Show"
 Cohesion: 0.31
 Nodes (11): Apple Intelligence On-Device Item Triage, Background Work via BGTaskScheduler, On-Device Theme Extraction in Reader, Overnight Processing Digest Notification, com.intelligentdesignsllc.smartward.processing Task Identifier, Shortcuts App Intents (Open digest / Add a source), What the Simulator Can't Show, Siri "Ask SmartWard" Voice Answer (+3 more)
 
-### Community 98 - "Presentation Layer (SwiftUI)"
+### Community 101 - "Presentation Layer (SwiftUI)"
 Cohesion: 0.22
 Nodes (11): C4 ODK core packages are iOS-only, FR-18 Encrypted export and import, FR-20 App Intents and Shortcuts, FR-21 Mac companion with CloudKit sync, NFR-3 Data ownership and open formats, NFR-4 Retrieval latency under 500 ms, Phase 5 Hardening, Phase 6 Mac companion and sync (+3 more)
 
-### Community 99 - "FakeEmbedder"
-Cohesion: 0.29
-Nodes (5): EmbeddingProviding, FakeEmbedder, .dimension, Int, HybridSearchTests
-
-### Community 100 - ".session()"
-Cohesion: 0.25
-Nodes (7): GraphKit, GraphExport, Date, LibraryArchive, String, GraphExportTests, SessionGraph
-
-### Community 101 - ".apply()"
-Cohesion: 0.36
-Nodes (5): ApplyResult, RepoSync, Date, Int, ModelContext
-
-### Community 102 - ".score()"
-Cohesion: 0.24
-Nodes (6): Date, Double, TimeInterval, ThemeStrength, TimeInterval, ThemeStrengthTests
-
-### Community 103 - "String"
-Cohesion: 0.35
-Nodes (4): LexicalIndex, .count, String, LexicalIndexTests
-
-### Community 104 - "FakeSummarizer"
+### Community 102 - "FakeSummarizer"
 Cohesion: 0.27
 Nodes (7): DigestBuilderTests, DigestFixture, FakeSummarizer, Date, LLMUsage, ModelContainer, ModelContext
 
-### Community 105 - "SourcesView"
-Cohesion: 0.22
-Nodes (9): SourceRow, .body, SourcesView, .body, .following, .listed, .paused, .suggested (+1 more)
+### Community 103 - "ThemeDetailView"
+Cohesion: 0.27
+Nodes (9): Connection, .id, Int, String, ThemeDetailView, .body, .connections, .recentMentions (+1 more)
 
-### Community 106 - "FakeBiometrics"
+### Community 104 - "SmartWardApp"
+Cohesion: 0.20
+Nodes (8): App, Scene, SmartWardApp, .body, ComingSoonView, .body, RootView, String
+
+### Community 105 - "ChatController"
 Cohesion: 0.31
-Nodes (6): BiometricResult, BiometricUnavailable, BiometryType, FakeBiometrics, Result, Void
+Nodes (6): CheckedContinuation, Never, ChatController, Bool, LLMCompleting, String
 
-### Community 107 - "Prompt-injection defense"
+### Community 106 - "Prompt-injection defense"
 Cohesion: 0.29
 Nodes (10): Confirmation chips for side-effecting tools, D4 One-tap GitHub sign-in, PAT advanced, GitHub App rejected: needs a token-exchange backend, GitHub option B: fine-grained PAT, GitHub option C: OAuth device flow, Prompt-injection defense, Keychain storage, NFR-7 Injection-safe tool execution (+2 more)
+
+### Community 107 - "ExtractedArticle"
+Cohesion: 0.27
+Nodes (6): ExtractedArticle, Date, URL, RecordingFetcher, URL, SwiftSoup
 
 ### Community 108 - "ArticleStage"
 Cohesion: 0.20
@@ -622,85 +626,101 @@ Nodes (10): .stage, ArticleStage, cleaned, embedded, extracted, failed, fetched,
 Cohesion: 0.40
 Nodes (4): Bool, Element, Int, TopK
 
-### Community 110 - "StrategistCore (tool loop, prompts, brie"
+### Community 110 - "AppTab"
+Cohesion: 0.24
+Nodes (8): AppNavigation, AppTab, chat, graph, projects, reading, today, UUID
+
+### Community 111 - "FoundationModelsEntityExtractor"
+Cohesion: 0.36
+Nodes (6): ExtractionSettings, FoundationModelsEntityExtractor, GeneratedEntity, GeneratedGraph, GeneratedRelation, String
+
+### Community 112 - "SourceKindOption"
+Cohesion: 0.22
+Nodes (9): AppEnum, SourceKindOption, arxiv, feed, githubReleases, hackerNews, .kind, webPage (+1 more)
+
+### Community 113 - "StrategistCore (tool loop, prompts, brie"
 Cohesion: 0.31
 Nodes (9): Invariant: network or durable-state tools must return an ActionRequest, ActionRequest (confirmation(for:) contract), OnDeviceKit BYOKLLMKit, ModelFallback (FallbackLLM over ModelCatalogKit), StrategistCore (tool loop, prompts, brief, fallback), StrategistRunner (tool-calling loop), Invariant: every strategist turn must end (toolChoice none, errors as results), Cost Controls (Settings to Usage and budget) (+1 more)
 
-### Community 111 - "Packages/SmartWardKit (local SPM package"
+### Community 114 - "Packages/SmartWardKit (local SPM package"
 Cohesion: 0.25
 Nodes (9): AppLock module (AppLockPolicy, AppLockCoordinator, PINRules), OnDeviceKit BiometricLockKit, GitNexus code intelligence (impact before edit, detect-changes before commit), Logic-in-Package Convention (swift test without a simulator), OnDeviceKit PINLockKit, ShareExtension/ (never opens the SwiftData store), ShareInbox (App Group JSON inbox, dependency-free), SmartWard/ (SwiftUI iOS app) (+1 more)
 
-### Community 112 - "SmartWardKit (Local Swift Package)"
+### Community 115 - "SmartWardKit (Local Swift Package)"
 Cohesion: 0.31
 Nodes (9): Background Extraction Stays On-Device Until Midnight, JSON / GraphML / Markdown Export Formats, Private Local Address Rejection (192.168.1.1), Wipe to Restore Backup Test, IngestKit (SmartWardKit Library Product), KnowledgeStore (SmartWardKit Library Product), Pipeline (SmartWardKit Library Product), SmartWardKit (Local Swift Package) (+1 more)
 
-### Community 113 - ".build()"
-Cohesion: 0.28
-Nodes (7): Scope, all, recent, source, Bool, Date, Set
+### Community 116 - "GitHubError"
+Cohesion: 0.22
+Nodes (9): GitHubError, .errorDescription, http, invalidResponse, notFound, rateLimited, unauthorized, Date (+1 more)
 
-### Community 114 - "AppTab"
+### Community 117 - "EmbeddingModel"
+Cohesion: 0.33
+Nodes (5): EmbeddingModel, EmbeddingProviding, String, ArticleIndexer, Int
+
+### Community 118 - "Observation"
 Cohesion: 0.25
-Nodes (8): AppNavigation, AppTab, chat, graph, projects, reading, today, UUID
+Nodes (3): Observation, GitHubConfig, UserNotifications
 
-### Community 115 - "DailyBudget"
-Cohesion: 0.36
-Nodes (5): DailyBudget, BudgetTests, Double, ModelContext, String
+### Community 119 - "ArchiveError"
+Cohesion: 0.25
+Nodes (6): ArchiveError, .errorDescription, newerVersion, notAnArchive, Data, Int
 
-### Community 116 - "Graph View"
+### Community 120 - "Graph View"
 Cohesion: 0.25
 Nodes (8): Alias + Embedding Similarity Name Resolution, Chunk-level Citations for Mentions and Edges, Entity and Relation Extraction, Extraction and Entity Resolution, Graph View, Theme Rename/Merge/Split (user corrections win), Theme Scopes (all, two weeks, project, source), Uncertain Merge Review Queue
 
-### Community 117 - "ArticleReaderView"
+### Community 121 - "ArticleReaderView"
 Cohesion: 0.29
 Nodes (7): ArticleReaderView, .fullTextBanner, .metadata, .originalURL, .paragraphs, String, URL
 
-### Community 118 - "ReadingView"
-Cohesion: 0.25
-Nodes (8): ReadingView, .emptyState, .filteredOutCount, .hasFollowedSources, .reading, .visible, Bool, Int
-
-### Community 119 - "ActivitySheet"
+### Community 122 - "ActivitySheet"
 Cohesion: 0.38
 Nodes (5): Any, Context, ActivitySheet, UIActivityViewController, UIViewControllerRepresentable
 
-### Community 120 - "UntrustedText (body/attribute inside its"
+### Community 123 - "UntrustedText (body/attribute inside its"
 Cohesion: 0.43
 Nodes (7): RedTeamTests (zero unapproved side effects), Invariant: untrusted text only through UntrustedText inside its fence, UntrustedText (body/attribute inside its fence), Poisoned Article Corpus, Private-Content Policy (private repos stay on-device), Uniform Prompt Fence Escaping, Red-team Suite
 
-### Community 121 - "Living Project Brief"
+### Community 124 - "StrategyItemsSection"
+Cohesion: 0.43
+Nodes (5): BriefEditorView, .body, StrategyItemsSection, .body, String
+
+### Community 125 - "FoundationModelsRelevanceJudge"
+Cohesion: 0.33
+Nodes (6): FoundationModelsRelevanceJudge, Bool, String, Triage.Strength, .label, Verdict
+
+### Community 126 - "Living Project Brief"
 Cohesion: 0.53
 Nodes (6): Invariant: brief text changes only through BriefEditing, BriefDiff (line diff of brief changes), BriefEditing (only path that changes brief text), Brief Line Diff (accept or reject), Living Project Brief, Suggest an Update
 
-### Community 122 - ".color()"
+### Community 127 - "RepoSyncTests"
 Cohesion: 0.40
-Nodes (4): Color, .body, ThemeStyle, .body
+Nodes (3): RepoSyncTests, Bool, String
 
-### Community 123 - "PINOutcome"
-Cohesion: 0.33
-Nodes (6): PINOutcome, incorrect, lockedOut, noPIN, unlocked, Int
+### Community 129 - "KnowledgeSchema"
+Cohesion: 0.50
+Nodes (4): KnowledgeSchema, .schema, PersistentModel, Schema
 
-### Community 124 - "BriefRevisionStatus"
-Cohesion: 0.33
-Nodes (6): .status, BriefRevisionStatus, accepted, pending, rejected, superseded
-
-### Community 125 - "Apple Intelligence Preflight"
+### Community 130 - "Apple Intelligence Preflight"
 Cohesion: 0.40
 Nodes (5): Apple Intelligence Preflight, Build and Package Test Commands, Onboarding Interview, Requirements (Xcode 26+, iOS 26+, iPhone 15 Pro+), XcodeGen (project.yml, generated xcodeproj)
 
-### Community 127 - "KnowledgeSchema"
-Cohesion: 0.67
-Nodes (4): KnowledgeSchema, .schema, PersistentModel, Schema
+### Community 131 - "IntentFailure"
+Cohesion: 0.40
+Nodes (5): IntentFailure, .errorDescription, libraryUnavailable, noProvider, String
 
-### Community 128 - "FakePIN"
+### Community 132 - "BYOKDigestSummarizer"
 Cohesion: 0.83
-Nodes (3): FakePIN, PINAttemptResult, String
+Nodes (3): BYOKDigestSummarizer, LLMCompleting, LLMProvider
 
-### Community 129 - "graphify_pipeline.py"
+### Community 133 - "graphify_pipeline.py"
 Cohesion: 0.67
 Nodes (3): keep(), main(), Self-contained graphify pipeline for CI and for headless local runs. Builds a…
 
-### Community 130 - "AppStore"
-Cohesion: 0.50
-Nodes (4): AppStore, Error, ModelContainer, Result
+### Community 134 - "ExtractionPrompt"
+Cohesion: 0.67
+Nodes (3): ExtractionPrompt, .schema, JSONValue
 
 ## Ambiguous Edges - Review These
 - `Scale Performance Tests (100k chunks, 3k themes)` → `Device Measurement (Instruments signposts)`  [AMBIGUOUS]
@@ -708,7 +728,7 @@ Nodes (4): AppStore, Error, ModelContainer, Result
 
 ## Knowledge Gaps
 - **275 isolated node(s):** `PackageDescription`, `unlocked`, `needsPIN`, `unlocked`, `incorrect` (+270 more)
-  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 526 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
+  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 527 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
 - **2 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
@@ -716,15 +736,15 @@ _Questions this graph is uniquely positioned to answer:_
 
 - **What is the exact relationship between `Scale Performance Tests (100k chunks, 3k themes)` and `Device Measurement (Instruments signposts)`?**
   _Edge tagged AMBIGUOUS (relation: conceptually_related_to) - confidence is low._
-- **Why does `Foundation` connect `KnowledgeStore` to `SharedInbox`, `Article`, `.record()`, `GitHubDeviceFlow`, `IngestError`, `PerfTrace`, `ExtractedArticle`, `StrategyItemKind`, `ExtractionTiers`, `ActionRequest`, `AppLockCoordinator`, `.items()`, `Dependency`, `SourceFetcher`, `.body`, `.canonicalize()`, `GitHubError`, `.render()`, `.session()`, `.score()`, `TopK`?**
-  _High betweenness centrality (0.056) - this node is a cross-community bridge._
-- **Why does `KnowledgeStore` connect `KnowledgeStore` to `.session()`, `RetrievedPassage`, `SearchDocument`, `ThemeStrengthCache`, `ThemeNode`, `SourceFetcher`, `StrategistRunner`, `StrategyItemKind`, `EmbeddingModel`?**
-  _High betweenness centrality (0.044) - this node is a cross-community bridge._
-- **Why does `SwiftData` connect `KnowledgeStore` to `Article`, `.record()`?**
-  _High betweenness centrality (0.037) - this node is a cross-community bridge._
+- **Why does `Foundation` connect `Foundation` to `AppLockCoordinator`, `BackgroundWork.swift`, `KnowledgeSchema`, `DailyBudget`, `ThemeNode`, `SharedInbox`, `.score()`, `GitHubDeviceFlow`, `GitHubClient`, `DeveloperView`, `IngestError`, `FakeTransport`, `XCTestCase`, `KnowledgeStore`, `ExtractionTiers`, `ActionRequest`, `BYOKLLMKit`, `.items()`, `Dependency`, `SwiftData`, `ProjectSnapshot`, `DigestSummaryRequest`, `SearchDocument`, `SmartWardIntents.swift`, `.canonicalize()`, `ExtractedArticle`, `TopK`, `AppTab`, `Observation`?**
+  _High betweenness centrality (0.051) - this node is a cross-community bridge._
+- **Why does `KnowledgeStore` connect `KnowledgeStore` to `BackgroundWork.swift`, `BYOKLLMKit`, `ThemeNode`, `StrategistRunner`, `SwiftData`, `ThemeStrengthCache`, `ProjectSnapshot`, `FakeTransport`, `XCTestCase`, `Foundation`, `.retrieve()`, `Observation`, `GraphIndexer`, `SmartWardIntents.swift`, `SearchDocument`?**
+  _High betweenness centrality (0.041) - this node is a cross-community bridge._
+- **Why does `Article` connect `Article` to `SharedInbox`, `ThemeNode`, `.makeContainer()`, `XCTestCase`, `ExtractionTiers`, `Conversation`, `PipelineRunner`, `RawItem`, `.dismiss()`, `ConversationView`, `.load()`, `ThemeStrengthCache`, `LexicalIndex`, `DigestBuilder`, `.article()`, `SearchDocument`, `SearchHit`, `.fetch()`, `DigestCluster`, `RetrievalFixture`, `ArticleStage`, `EmbeddingModel`, `ArticleReaderView`?**
+  _High betweenness centrality (0.033) - this node is a cross-community bridge._
 - **Are the 21 inferred relationships involving `Project` (e.g. with `.restore()` and `.apply()`) actually correct?**
   _`Project` has 21 INFERRED edges - model-reasoned connections that need verification._
 - **What connects `PackageDescription`, `unlocked`, `needsPIN` to the rest of the system?**
   _275 weakly-connected nodes found - possible documentation gaps or missing edges._
-- **Should `KnowledgeStore` be split into smaller, more focused modules?**
-  _Cohesion score 0.053838484546360914 - nodes in this community are weakly interconnected._
+- **Should `AppLockCoordinator` be split into smaller, more focused modules?**
+  _Cohesion score 0.050580997949419004 - nodes in this community are weakly interconnected._

@@ -38,8 +38,17 @@ struct ReadingView: View {
             case .all: return true
             }
         }
-        guard order == .relevant else { return filtered }
-        return filtered.sorted { $0.relevance > $1.relevance }
+        switch order {
+        case .newest:
+            // Sort by when the item was actually published, not when this
+            // device happened to fetch it: polling several blogs in one
+            // refresh gives them near-identical `ingestedAt` values, which
+            // would otherwise clump each blog's items together instead of
+            // interleaving them chronologically.
+            return filtered.sorted { ($0.publishedAt ?? $0.ingestedAt) > ($1.publishedAt ?? $1.ingestedAt) }
+        case .relevant:
+            return filtered.sorted { $0.relevance > $1.relevance }
+        }
     }
 
     /// Unread items triage judged off-topic (FR-4).
