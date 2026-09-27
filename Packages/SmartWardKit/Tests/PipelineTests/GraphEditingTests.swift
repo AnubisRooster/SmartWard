@@ -167,6 +167,53 @@ final class GraphSnapshotTests: XCTestCase {
         XCTAssertTrue(limited.edges.isEmpty)
     }
 
+    /// Extraction resolves a theme (and may read its `mentions`, e.g. for a
+    /// similarity check) *before* linking a chunk to it in a later save —
+    /// unlike the fixture above, which creates a node and its mentions
+    /// together in one shot. Scoping must not depend on a `ThemeNode`'s
+    /// `mentions` still reflecting rows attached to it afterward in the same
+    /// session; it reads `Mention` rows directly instead, like strength does.
+    @MainActor
+    func testScopesSeeMentionsAttachedAfterTheThemeWasAlreadyResolved() throws {
+        let container = try KnowledgeSchema.makeContainer(inMemory: true)
+        let context = container.mainContext
+
+        let feed = Source(kind: "rss", url: "https://feed.example")
+        context.insert(feed)
+        let article = Article(canonicalURL: "https://feed.example/1", title: "A")
+        context.insert(article)
+        article.source = feed
+        let chunk = KnowledgeStore.Chunk(text: "a")
+        article.chunks?.append(chunk)
+
+        let project = Project(name: "P")
+        context.insert(project)
+        let conversation = Conversation(title: "c")
+        project.conversations?.append(conversation)
+        let turn = Message(role: "user", content: "t")
+        conversation.messages?.append(turn)
+        let turnChunk = KnowledgeStore.Chunk(text: "t")
+        turn.chunks?.append(turnChunk)
+
+        let vllm = ThemeNode(type: "tool", canonicalLabel: "vLLM")
+        context.insert(vllm)
+        try context.save()
+        _ = vllm.mentions?.count // resolved (and cached) as empty, as a lookup during resolution would
+
+        mention(vllm, in: chunk, at: now)
+        mention(vllm, in: turnChunk, at: now)
+        try context.save()
+
+        let recent = try GraphSnapshot.build(context: context, scope: .recent(days: 14), now: now)
+        XCTAssertEqual(recent.nodes.map(\.label), ["vLLM"])
+
+        let bySource = try GraphSnapshot.build(context: context, scope: .source(feed.id), now: now)
+        XCTAssertEqual(bySource.nodes.map(\.label), ["vLLM"])
+
+        let byProject = try GraphSnapshot.build(context: context, scope: .project(project.id), now: now)
+        XCTAssertEqual(byProject.nodes.map(\.label), ["vLLM"])
+    }
+
     func testLayoutIsDeterministicInBoundsAndPullsNeighborsTogether() {
         let ids = (0..<6).map { _ in UUID() }
         let nodes = ids.enumerated().map { index, id in

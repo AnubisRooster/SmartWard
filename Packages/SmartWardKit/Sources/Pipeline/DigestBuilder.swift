@@ -204,10 +204,8 @@ public struct DigestBuilder {
 
         let projects = try context.fetch(FetchDescriptor<Project>(predicate: #Predicate { $0.isActive == true }))
         var projectNodes: [UUID: Set<UUID>] = [:]
-        let allNodes = try context.fetch(FetchDescriptor<ThemeNode>())
         for project in projects {
-            projectNodes[project.id] = try GraphSnapshot.scopedIDs(.project(project.id), nodes: allNodes,
-                                                                   context: context, now: until) ?? []
+            projectNodes[project.id] = try GraphSnapshot.scopedIDs(.project(project.id), context: context, now: until) ?? []
         }
 
         var result: [DigestCluster] = []

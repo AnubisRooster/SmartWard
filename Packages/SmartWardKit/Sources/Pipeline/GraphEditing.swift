@@ -150,13 +150,8 @@ public struct GraphSnapshot: Equatable, Sendable {
     public static func build(context: ModelContext, scope: Scope = .all, limit: Int = 80,
                              includeDormant: Bool = false, now: Date = Date(),
                              strengths: ThemeStrengthCache? = nil) throws -> GraphSnapshot {
-        var nodeFetch = FetchDescriptor<ThemeNode>()
-        if scope != .all {
-            // Scopes walk each theme's mentions; load them in one go.
-            nodeFetch.relationshipKeyPathsForPrefetching = [\.mentions]
-        }
-        let allNodes = try context.fetch(nodeFetch)
-        let inScope = try scopedIDs(scope, nodes: allNodes, context: context, now: now)
+        let allNodes = try context.fetch(FetchDescriptor<ThemeNode>())
+        let inScope = try scopedIDs(scope, context: context, now: now)
         let scores: [UUID: ThemeStrengths.Entry]
         if let strengths {
             scores = try strengths.strengths(context: context, now: now)
@@ -199,19 +194,29 @@ public struct GraphSnapshot: Equatable, Sendable {
         return GraphSnapshot(nodes: nodes, edges: edges)
     }
 
-    /// `nil` means everything.
+    /// `nil` means everything. Membership is read from `Mention` rows
+    /// directly (like `ThemeStrengths.compute`), not from a `ThemeNode`'s
+    /// inverse `mentions` relationship: that collection is what a theme
+    /// object already had faulted in when it was resolved during extraction,
+    /// and can undercount mentions linked to it afterward in the same
+    /// session, which silently emptied every scope but "all" (whose
+    /// strengths already came from the same direct-fetch pattern).
     @MainActor
-    static func scopedIDs(_ scope: Scope, nodes: [ThemeNode], context: ModelContext, now: Date) throws -> Set<UUID>? {
+    static func scopedIDs(_ scope: Scope, context: ModelContext, now: Date) throws -> Set<UUID>? {
         switch scope {
         case .all:
             return nil
         case .recent(let days):
             let cutoff = now.addingTimeInterval(-Double(days) * 86_400)
-            return Set(nodes.filter { ($0.mentions ?? []).contains { $0.createdAt >= cutoff } }.map(\.id))
+            var descriptor = FetchDescriptor<Mention>(predicate: #Predicate { $0.createdAt >= cutoff })
+            descriptor.relationshipKeyPathsForPrefetching = [\.node]
+            return Set(try context.fetch(descriptor).compactMap { $0.node?.id })
         case .source(let sourceID):
-            return Set(nodes.filter { node in
-                (node.mentions ?? []).contains { $0.chunk?.article?.source?.id == sourceID }
-            }.map(\.id))
+            var descriptor = FetchDescriptor<Mention>()
+            descriptor.relationshipKeyPathsForPrefetching = [\.node, \.chunk]
+            return Set(try context.fetch(descriptor).compactMap { mention in
+                mention.chunk?.article?.source?.id == sourceID ? mention.node?.id : nil
+            })
         case .project(let projectID):
             guard let project = try context.fetch(FetchDescriptor<Project>(predicate: #Predicate { $0.id == projectID })).first else {
                 return []
@@ -219,15 +224,16 @@ public struct GraphSnapshot: Equatable, Sendable {
             var ids = Set((project.pinnedNodes ?? []).map(\.id))
             let conversationIDs = Set((project.conversations ?? []).map(\.id))
             let sourceIDs = Set((project.links ?? []).compactMap(\.sourceID))
-            for node in nodes {
-                let belongs = (node.mentions ?? []).contains { mention in
-                    if let conversation = mention.chunk?.message?.conversation?.id, conversationIDs.contains(conversation) {
-                        return true
-                    }
-                    if let source = mention.chunk?.article?.source?.id, sourceIDs.contains(source) { return true }
-                    return false
+            guard !conversationIDs.isEmpty || !sourceIDs.isEmpty else { return ids }
+            var descriptor = FetchDescriptor<Mention>()
+            descriptor.relationshipKeyPathsForPrefetching = [\.node, \.chunk]
+            for mention in try context.fetch(descriptor) {
+                guard let nodeID = mention.node?.id else { continue }
+                if let conversation = mention.chunk?.message?.conversation?.id, conversationIDs.contains(conversation) {
+                    ids.insert(nodeID)
+                } else if let source = mention.chunk?.article?.source?.id, sourceIDs.contains(source) {
+                    ids.insert(nodeID)
                 }
-                if belongs { ids.insert(node.id) }
             }
             return ids
         }

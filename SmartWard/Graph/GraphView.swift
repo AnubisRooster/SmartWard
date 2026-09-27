@@ -22,6 +22,7 @@ struct GraphView: View {
     @State private var positions: [UUID: ForceLayout.Point] = [:]
     @State private var selected: ThemeNode?
     @State private var showingReview = false
+    @State private var buildError: String?
     @AppStorage("graph.showsList") private var showsList = false
     /// Strengths are rescaled for decay instead of recomputed on every visit.
     @State private var strengths = ThemeStrengthCache()
@@ -46,6 +47,14 @@ struct GraphView: View {
                     if nodes.isEmpty {
                         ContentUnavailableView("No themes yet", systemImage: "point.3.connected.trianglepath.dotted",
                                                description: Text("Themes appear as SmartWard reads your sources and your conversations."))
+                    } else if let buildError {
+                        ContentUnavailableView {
+                            Label("Couldn't load the graph", systemImage: "exclamationmark.triangle")
+                        } description: {
+                            Text(buildError)
+                        } actions: {
+                            Button("Try again") { rebuild() }
+                        }
                     } else {
                         ContentUnavailableView {
                             Label("No themes here", systemImage: "line.3.horizontal.decrease.circle")
@@ -132,9 +141,16 @@ struct GraphView: View {
     }
 
     private func rebuild() {
-        let built = PerfTrace.measure("Graph snapshot") {
-            (try? GraphSnapshot.build(context: context, scope: graphScope, includeDormant: showDormant,
-                                      strengths: strengths)) ?? GraphSnapshot(nodes: [], edges: [])
+        let built: GraphSnapshot
+        do {
+            built = try PerfTrace.measure("Graph snapshot") {
+                try GraphSnapshot.build(context: context, scope: graphScope, includeDormant: showDormant,
+                                        strengths: strengths)
+            }
+            buildError = nil
+        } catch {
+            built = GraphSnapshot(nodes: [], edges: [])
+            buildError = error.localizedDescription
         }
         snapshot = built
         positions = ForceLayout.layout(built)
