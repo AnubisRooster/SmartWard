@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 import Pipeline
 import Observation
 import SwiftData
@@ -46,6 +47,12 @@ final class ChatController {
         defer {
             isRunning = false
             streamingText = ""
+            // Kept even if the turn below throws: an approval you gave
+            // before a failed fetch shouldn't be lost, only to look, next
+            // time, like it was never asked for.
+            if !activity.isEmpty {
+                conversation.messages?.append(Message(role: "tool", content: activity.joined(separator: "\n")))
+            }
         }
 
         conversation.messages?.append(Message(role: "user", content: text))
@@ -84,7 +91,8 @@ final class ChatController {
             },
             GraphNeighborsTool(context: context),
             OpenArticleTool(ledger: ledger, context: context),
-            FetchURLTool(fetcher: IngestController.shared.fetcher, ledger: ledger),
+            FetchURLTool(fetcher: IngestController.shared.fetcher, ledger: ledger,
+                        context: context, localOnly: conversation.offTheRecord),
             AddSourceTool(context: context),
         ]
         if let project {
@@ -115,9 +123,6 @@ final class ChatController {
                 message.referencesJSON = Self.referencesJSON(ledger.passages)
                 conversation.messages?.append(message)
             }
-            if !activity.isEmpty {
-                conversation.messages?.append(Message(role: "tool", content: activity.joined(separator: "\n")))
-            }
             conversation.updatedAt = Date()
             // Add this exchange to the knowledge graph once it has settled.
             Task {
@@ -139,11 +144,19 @@ final class ChatController {
 
     private func requestApproval(_ action: ActionRequest) async -> Bool {
         if declinesActions { return false }
+        if isAutoApproved(action.tool) { return true }
         resolve(approved: false)
         return await withCheckedContinuation { continuation in
             approval = continuation
             pendingAction = action
         }
+    }
+
+    /// Settings → "Approve fetches and new sources automatically." Never
+    /// covers record_strategy_item: that changes what the project
+    /// remembers, not just what the strategist reads.
+    private func isAutoApproved(_ tool: String) -> Bool {
+        UserDefaults.standard.bool(forKey: ActionTools.autoApproveKey) && ActionTools.autoApprovableTools.contains(tool)
     }
 
     /// What a reply was given, for its Sources list: text is trimmed to a teaser.
@@ -166,9 +179,16 @@ final class ChatController {
         case .toolCall(let name, _):
             activity.append("Using \(name)…")
         case .awaitingConfirmation(let action):
-            activity.append("Asking you: \(action.title)")
+            if isAutoApproved(action.tool) {
+                activity.append("Auto-approved: \(action.title) (\(action.detail))")
+            } else {
+                activity.append("Asking you: \(action.title)")
+            }
         case .confirmationResolved(let action, let approved):
-            activity.append("\(approved ? "Approved" : "Declined"): \(action.title) (\(action.detail))")
+            // The auto-approved case already logged itself above.
+            if !isAutoApproved(action.tool) {
+                activity.append("\(approved ? "Approved" : "Declined"): \(action.title) (\(action.detail))")
+            }
         case .toolResult(let name, let result, let isError):
             activity.append(isError ? "\(name) failed: \(result)" : "\(name): \(result.prefix(120))")
         case .roundFinished(let response):
@@ -181,6 +201,27 @@ final class ChatController {
                                    feature: "chat", inputTokens: usage.inputTokens, outputTokens: usage.outputTokens,
                                    reportedCostUSD: usage.costUSD, context: context)
             }
+        }
+    }
+}
+
+/// Settings → lets the strategist read pages and follow sources without a
+/// card every time, in every chat. Off by default: this is what stands
+/// between a poisoned page and it fetching or following more on its own
+/// (PLAN §5.7). record_strategy_item is never covered here — it always asks,
+/// since it changes what a project remembers, not just what gets read.
+struct ActionApprovalSettingsSection: View {
+    @AppStorage(ActionTools.autoApproveKey) private var autoApprove = false
+
+    var body: some View {
+        Section {
+            Toggle("Approve fetches and new sources automatically", isOn: $autoApprove)
+        } header: {
+            Text("Strategist actions")
+        } footer: {
+            Text(autoApprove
+                 ? "On: fetch_url and add_source run the moment the strategist calls them, in every chat, with no card to review first. Saving a decision or open item to a project still always asks."
+                 : "Off: reading a web page or following a new source always shows a card to approve first, so text on a page can't get it to fetch or follow more on its own.")
         }
     }
 }

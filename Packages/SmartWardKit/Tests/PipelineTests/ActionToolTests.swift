@@ -86,6 +86,29 @@ final class FetchURLToolTests: XCTestCase {
             XCTFail("a failed fetch is reported to the model")
         } catch {}
     }
+
+    /// Findings sync to the graph: with a context, an approved fetch is also
+    /// saved as a real, searchable article, not just this reply's context.
+    @MainActor
+    func testApprovedFetchIsAlsoSavedToTheKnowledgeGraph() async throws {
+        let container = try KnowledgeSchema.makeContainer(inMemory: true)
+        let context = container.mainContext
+        let url = "https://vllm.ai/blog/spec-decode"
+        let fetcher = FakeFullText(pages: [url: ExtractedArticle(title: "Spec decode in vLLM", text: "Draft models predict.")])
+
+        _ = try await FetchURLTool(fetcher: fetcher, ledger: ReferenceLedger(), context: context, localOnly: true)
+            .run(arguments: ["url": .string(url)])
+
+        let article = try XCTUnwrap(context.fetch(FetchDescriptor<Article>()).first)
+        XCTAssertEqual(article.canonicalURL, url)
+        XCTAssertEqual(article.cleanedText, "Draft models predict.")
+        XCTAssertTrue(article.localOnly, "this chat is off the record")
+
+        // Without a context (the tests above, and any caller with nowhere
+        // to save), the read stays exactly as ephemeral as before.
+        _ = try await FetchURLTool(fetcher: fetcher, ledger: ReferenceLedger()).run(arguments: ["url": .string(url)])
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<Article>()), 1)
+    }
 }
 
 final class AddSourceToolTests: XCTestCase {

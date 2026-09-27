@@ -29,6 +29,7 @@ struct SettingsView: View {
                 DigestSettingsSection()
                 KnowledgeGraphSettingsSection()
                 GitHubSettingsSection()
+                ActionApprovalSettingsSection()
                 SecuritySettingsSection()
                 Section {
                     Button("Run setup again") { onboardingCompleted = false }

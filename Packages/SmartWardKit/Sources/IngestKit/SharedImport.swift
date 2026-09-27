@@ -74,7 +74,13 @@ public enum SharedImport {
     @MainActor
     static func sharedSource(context: ModelContext) throws -> Source {
         let manual = SourceKind.manual.rawValue
-        if let existing = try context.fetch(FetchDescriptor<Source>(predicate: #Predicate { $0.kind == manual })).first {
+        let title = sourceTitle
+        // Filtered by title too, not just kind: other `.manual` sources exist
+        // (Pipeline's FetchedPageImport keeps its own), and matching on kind
+        // alone would non-deterministically hand back whichever one a fetch
+        // happens to return first.
+        if let existing = try context.fetch(FetchDescriptor<Source>(
+            predicate: #Predicate { $0.kind == manual && $0.title == title })).first {
             return existing
         }
         let source = Source(kind: manual, url: "", title: sourceTitle)

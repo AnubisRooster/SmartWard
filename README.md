@@ -62,6 +62,7 @@ Phase 5 hardening, in progress:
   - A developer screen can load a marked, removable 100,000-chunk sample library and run the GraphRAG latency check against the 500 ms target. Timings are signposts you can see in Instruments. See [docs/DEVICE_TESTING.md](docs/DEVICE_TESTING.md).
   - Theme strengths are cached between graph views and rescaled for decay rather than recomputed.
   - The search index takes new and removed articles in place instead of rebuilding
+- [x] Fetched pages join your library: a page the strategist reads with your approval (`fetch_url`) is now saved as a real article too, under its own "Read in chat" source, so it's chunked, embedded and linked into the graph like anything else you read, not just used for that one reply. Settings → "Approve fetches and new sources automatically" lets `fetch_url` and `add_source` run without a card every time, still logged as auto-approved; saving a decision or open item to a project always asks regardless
 
 ## Requirements
 
