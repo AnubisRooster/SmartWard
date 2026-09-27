@@ -224,6 +224,8 @@ public final class Article {
     public var ingestedAt: Date = Date()
     public var stageRaw: String = "fetched"
     public var relevance: Double = 0
+    /// Why triage scored it so, e.g. "Matches your interest in agents".
+    public var relevanceReason: String = ""
     public var isRead: Bool = false
     public var isStarred: Bool = false
     /// Content from a private repo: extraction and BYOK context never see it (D5).

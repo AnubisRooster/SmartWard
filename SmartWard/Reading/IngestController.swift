@@ -76,6 +76,9 @@ final class IngestController {
         var parts = [added == 1 ? "1 new item" : "\(added) new items"]
         if failed > 0 { parts.append(failed == 1 ? "1 source failed" : "\(failed) sources failed") }
         lastSummary = parts.joined(separator: " · ")
+
+        // Triage, full text and indexing for what just arrived (and any backlog).
+        await PipelineController.shared.process(context: context)
     }
 
     /// Fetches the page behind a teaser and keeps its readable text.

@@ -37,6 +37,8 @@ targets:
         product: IngestKit
       - package: SmartWardKit
         product: AppLock
+      - package: SmartWardKit
+        product: Pipeline
       - package: OnDeviceKit
         product: BYOKLLMKit
       - package: OnDeviceKit

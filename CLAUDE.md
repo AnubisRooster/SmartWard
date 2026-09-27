@@ -10,6 +10,7 @@ Local-first iOS research strategist. The source of truth for requirements, desig
   - `IngestKit`: source ingestion and GitHub.
     - Sources: `SourceEndpoint` (what a user typed → the URL fetched), `SourceFetcher` (per-kind adapters), `FeedParser` (RSS/Atom/RDF), `ArticleExtractor` (SwiftSoup; HTML → clean text), `PolitenessGate` (rate limits, backoff, robots.txt), `FeedIngest` (dedupe and store).
     - GitHub: the GET-only `GitHubClient`, `GitHubDeviceFlow`, `GitHubTokenStore` (device-only Keychain), `ManifestParser`, and `RepoSync` (repo docs → articles, dependency radar).
+  - `Pipeline`: `PipelineRunner` (the resumable stage machine: triage → full text → chunk + embed), `Triage` and `InterestModel` (T0 relevance), `ArticleIndexer`, `EmbeddingModel` and `VectorCoding`. It sits on OnDeviceKit's `RetrievalKit`; qualify `KnowledgeStore.Chunk` vs `RetrievalKit.Chunk` in files that import both.
   - `AppLock`: `AppLockPolicy` (when to lock), `AppLockCoordinator` (biometrics first, PIN fallback, re-baseline after enrollment changes), and `PINRules`. It sits on OnDeviceKit's `PINLockKit` and `BiometricLockKit`.
   - `StrategistCore`: the tool-calling loop (`StrategistRunner`), mode prompts, history budgeting, and project tools. It depends on OnDeviceKit's `BYOKLLMKit`.
 - Shared, domain-agnostic code belongs in [OnDeviceKit](https://github.com/AnubisRooster/OnDeviceKit), not here.
@@ -22,6 +23,7 @@ Local-first iOS research strategist. The source of truth for requirements, desig
 - API keys and tokens live only in the Keychain, never in `UserDefaults`, SwiftData or backups.
 - SmartWard never writes to GitHub. `GitHubClient` issues GET requests only; the two device-flow auth calls to github.com are the only exceptions. Only docs and manifests are synced, never source code. A private repo's articles are always `localOnly`.
 - Every ingestion request goes through `PolitenessGate` (truthful User-Agent, per-host rate limit, backoff; robots.txt for web pages), and all fetched HTML goes through `ArticleExtractor`, which drops hidden text, comments and invisible characters before anything is stored. Articles are deduped by `CanonicalURL` and content hash across all sources.
+- Pipeline stages are idempotent and save after every article; never add a stage that can't be re-run safely. Chunks record `embeddingModel`, and vectors from different models are never compared.
 - Every strategist turn must end: the runner's last round forces `toolChoice = .none`, and tool failures go back to the model as error results instead of aborting the turn.
 - Enum-backed model fields store a raw `String` with a literal default and expose a typed computed property that falls back on unknown values.
 
