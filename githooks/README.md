@@ -53,3 +53,4 @@ and `.claude/skills/gitnexus-*` are committed.
 `.github/workflows/graphify.yml` on purpose. When CI and the hooks each carried
 their own copy of the rebuild-and-copy-back steps they drifted, and the graph
 churned on every push for no reason.
+
