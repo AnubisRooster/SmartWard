@@ -20,6 +20,7 @@ public enum KnowledgeSchema {
         EntityAlias.self,
         Mention.self,
         ThemeEdge.self,
+        MergeSuggestion.self,
         UsageRecord.self,
     ]
 

@@ -7,8 +7,9 @@ import IngestKit
 import KnowledgeStore
 import Pipeline
 
-/// Runs the ingestion pipeline (triage → full text → chunk + embed) on the
-/// backlog after each refresh. Everything here runs on-device.
+/// Runs the ingestion pipeline (triage → full text → chunk + embed →
+/// extract + link) on the backlog after each refresh and chat reply. Only
+/// extraction may use your provider, and only where D2/D5 allow it.
 @MainActor
 @Observable
 final class PipelineController {
@@ -39,7 +40,8 @@ final class PipelineController {
         let runner = PipelineRunner(embedder: embedder,
                                     fullText: IngestController.shared.fetcher,
                                     judge: FoundationModelsRelevanceJudge(),
-                                    strength: strength)
+                                    strength: strength,
+                                    extraction: ExtractionSettings.tiers())
         do {
             lastReport = try await runner.run(context: context, until: Date().addingTimeInterval(budget))
         } catch {

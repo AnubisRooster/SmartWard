@@ -292,6 +292,8 @@ public final class Message {
     public var content: String = ""
     public var toolCallsJSON: String?
     public var createdAt: Date = Date()
+    /// When this turn was chunked, embedded and added to the graph; `nil` until then.
+    public var indexedAt: Date?
 
     @Relationship(deleteRule: .cascade, inverse: \Chunk.message)
     public var chunks: [Chunk]? = []
@@ -339,6 +341,9 @@ public final class ThemeNode {
     public var normalizedKey: String = ""
     public var summary: String?
     public var createdAt: Date = Date()
+    /// Embedding of the label, for entity resolution. Derived and per device.
+    @Attribute(.externalStorage) public var labelVector: Data?
+    public var labelVectorModel: String = ""
 
     @Relationship(deleteRule: .cascade, inverse: \EntityAlias.node)
     public var aliases: [EntityAlias]? = []
@@ -382,6 +387,25 @@ public final class EntityAlias {
     public init(alias: String, origin: String = "auto") {
         self.alias = alias
         self.origin = origin
+    }
+}
+
+/// A possible duplicate the resolver wasn't sure enough to merge (PLAN
+/// §5.3): `nodeID` looks like `candidateID`. You decide in the graph view.
+@Model
+public final class MergeSuggestion {
+    public var id: UUID = UUID()
+    public var nodeID: UUID = UUID()
+    public var candidateID: UUID = UUID()
+    public var similarity: Double = 0
+    /// pending | merged | dismissed
+    public var status: String = "pending"
+    public var createdAt: Date = Date()
+
+    public init(nodeID: UUID, candidateID: UUID, similarity: Double) {
+        self.nodeID = nodeID
+        self.candidateID = candidateID
+        self.similarity = similarity
     }
 }
 

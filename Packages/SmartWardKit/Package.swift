@@ -43,6 +43,7 @@ let package = Package(
                     "KnowledgeStore",
                     "IngestKit",
                     .product(name: "RetrievalKit", package: "OnDeviceKit"),
+                    .product(name: "BYOKLLMKit", package: "OnDeviceKit"),
                 ]),
         .target(name: "AppLock",
                 dependencies: [
@@ -63,6 +64,7 @@ let package = Package(
                         "KnowledgeStore",
                         "IngestKit",
                         .product(name: "RetrievalKit", package: "OnDeviceKit"),
+                        .product(name: "BYOKLLMKit", package: "OnDeviceKit"),
                     ]),
         .testTarget(name: "AppLockTests",
                     dependencies: [
