@@ -79,7 +79,8 @@ struct ReadingView: View {
                         ProgressView()
                     } else {
                         Button("Refresh", systemImage: "arrow.clockwise") {
-                            Task { await ingest.refreshAll(context: context) }
+                            // Keeps going with system progress if you leave the app.
+                            BackgroundWork.startContinuedRefresh(context: context)
                         }
                         .disabled(!hasFollowedSources)
                     }

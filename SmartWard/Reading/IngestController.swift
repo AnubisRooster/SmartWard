@@ -20,12 +20,15 @@ final class IngestController {
     typealias FetchOutcome = (id: UUID, result: Result<FetchedSource?, Error>)
 
     /// Refreshes every followed source that is polled.
-    func refreshAll(context: ModelContext) async {
+    /// - Parameter process: also run the pipeline afterwards. Background app
+    ///   refresh passes `false`: its window is too short, and processing has
+    ///   its own background task.
+    func refreshAll(context: ModelContext, process: Bool = true) async {
         let followed = (try? context.fetch(FetchDescriptor<Source>(predicate: #Predicate { $0.isEnabled }))) ?? []
-        await refresh(followed.filter { $0.sourceKind.isPolled }, context: context)
+        await refresh(followed.filter { $0.sourceKind.isPolled }, context: context, process: process)
     }
 
-    func refresh(_ sources: [Source], context: ModelContext) async {
+    func refresh(_ sources: [Source], context: ModelContext, process: Bool = true) async {
         guard !isRefreshing, !sources.isEmpty else { return }
         isRefreshing = true
         defer {
@@ -78,7 +81,9 @@ final class IngestController {
         lastSummary = parts.joined(separator: " · ")
 
         // Triage, full text and indexing for what just arrived (and any backlog).
-        await PipelineController.shared.process(context: context)
+        if process {
+            await PipelineController.shared.process(context: context)
+        }
     }
 
     /// Fetches the page behind a teaser and keeps its readable text.

@@ -159,12 +159,17 @@ public final class PipelineRunner {
     /// still waiting for its full text stays `fetched` when relevant.
     /// - Returns: whether it's relevant.
     private func triage(_ article: Article, model: InterestModel, report: inout Report) async throws -> Bool {
-        if article.source?.sourceKind == .githubRepo {
+        switch article.source?.sourceKind {
+        case .githubRepo?, .manual?:
+            // Linked-repo docs are project context and shared items were
+            // chosen by you: both are relevant by definition.
             article.relevance = 1
-            article.relevanceReason = "From a linked repo"
-            article.stage = .triaged
+            article.relevanceReason = article.source?.sourceKind == .manual ? "You shared this" : "From a linked repo"
+            if article.stage != .fetched { article.stage = .triaged }
             report.triaged += 1
             return true
+        default:
+            break
         }
 
         let text = Triage.triageText(title: article.title, summary: article.summary)

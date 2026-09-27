@@ -16,12 +16,12 @@ Phase 1 foundation, done:
 - [x] GitHub sign-in and repo sync: one-tap device flow (with a token as the advanced option), a repo picker, and read-only sync of docs and manifests; private repos stay on-device, and dependencies feed the dependency radar
 - [x] App lock: Face ID/Touch ID with a PIN fallback, a lock on launch and after a background grace period, and a privacy cover in the app switcher
 
-Phase 2 ingestion and search, in progress:
+Phase 2 ingestion and search, done:
 
 - [x] Sources and reading: RSS/Atom feeds (with feed discovery from a blog's home page), arXiv categories or searches, Hugging Face daily papers, Hacker News searches, GitHub releases, and watched web pages. Every request is rate-limited per host, backs off on 429/503, uses conditional GET, and checks robots.txt for web pages. Articles are deduped across sources and cleaned of hidden text. The Reading tab has a reader view, and dependency-radar suggestions can be followed with one tap
 - [x] Ingestion pipeline: a resumable stage machine that triages new items on-device against your interests, projects, dependencies and reading history (Apple Foundation Models decides borderline items), fetches full text for relevant teasers, then chunks and embeds them on-device. Off-topic items stay searchable but are hidden from Unread
 - [x] Hybrid search: keyword (BM25, with compound tokens like "SWE-bench" kept whole) and semantic search fused per article, on-device, from the Reading tab's search field. Off-topic items are included
-- [ ] Background refresh and the share extension
+- [x] Background refresh and the share extension: hourly background polling, backlog processing while charging, a Refresh that keeps going with system progress after you leave the app, and "Add to SmartWard" from any app's share sheet (optionally tagged to a project)
 
 ## Requirements
 
