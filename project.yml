@@ -31,6 +31,8 @@ targets:
     dependencies:
       - package: SmartWardKit
         product: KnowledgeStore
+      - package: SmartWardKit
+        product: StrategistCore
       - package: OnDeviceKit
         product: BYOKLLMKit
     settings:
