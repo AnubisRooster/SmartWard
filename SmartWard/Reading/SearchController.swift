@@ -15,7 +15,21 @@ final class SearchController {
     private(set) var isIndexing = false
     private var index: HybridSearchIndex?
     private var indexedFingerprint: (articles: Int, chunks: Int)?
-    private let embedder = EmbeddingModel.appleSentence()
+    /// Set after pipeline runs: chunks may have been replaced without the
+    /// counts changing.
+    private var isStale = false
+    let embedder = EmbeddingModel.appleSentence()
+
+    /// Checks for changes before the next query.
+    func markStale() {
+        isStale = true
+    }
+
+    /// Drops the index; the next query builds a new one.
+    func reset() {
+        index = nil
+        indexedFingerprint = nil
+    }
 
     /// Context for the strategist: GraphRAG over the library (PLAN §5.2).
     func passages(for query: String, excludingConversation conversationID: UUID?,
@@ -23,9 +37,12 @@ final class SearchController {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return [] }
         await ensureIndex(context: context)
-        let vector = await embedder?.provider.embed(trimmed)
-        return (try? GraphRetriever().retrieve(query: trimmed, queryVector: vector, index: index,
-                                               excludingConversation: conversationID, context: context)) ?? []
+        // NFR-4: embedding the question plus GraphRAG, under 500 ms at 100k chunks.
+        return await PerfTrace.measureAsync("GraphRAG") {
+            let vector = await embedder?.provider.embed(trimmed)
+            return (try? GraphRetriever().retrieve(query: trimmed, queryVector: vector, index: index,
+                                                   excludingConversation: conversationID, context: context)) ?? []
+        }
     }
 
     func search(_ query: String, context: ModelContext) async -> [SearchHit] {
@@ -33,16 +50,19 @@ final class SearchController {
         guard !trimmed.isEmpty else { return [] }
         await ensureIndex(context: context)
         guard let index else { return [] }
-        let vector = await embedder?.provider.embed(trimmed)
-        return index.search(trimmed, queryVector: vector)
+        return await PerfTrace.measureAsync("Search") {
+            let vector = await embedder?.provider.embed(trimmed)
+            return index.search(trimmed, queryVector: vector)
+        }
     }
 
-    /// Rebuilds when articles or chunks were added or removed. Building runs
-    /// off the main actor; only reading the store happens here.
+    /// Keeps the index current: new articles and chunks are added in place,
+    /// removed ones retired. A full build (off the main actor) happens only
+    /// the first time, or when much of the library changed.
     private func ensureIndex(context: ModelContext) async {
         let fingerprint = (articles: (try? context.fetchCount(FetchDescriptor<Article>())) ?? 0,
                            chunks: (try? context.fetchCount(FetchDescriptor<KnowledgeStore.Chunk>())) ?? 0)
-        if let indexedFingerprint, index != nil,
+        if !isStale, let indexedFingerprint, index != nil,
            indexedFingerprint.articles == fingerprint.articles, indexedFingerprint.chunks == fingerprint.chunks {
             return
         }
@@ -50,11 +70,23 @@ final class SearchController {
         isIndexing = true
         defer { isIndexing = false }
 
-        guard let documents = try? SearchCorpus.documents(context: context, embeddingModelID: embedder?.id) else { return }
-        index = await Task.detached(priority: .userInitiated) {
-            HybridSearchIndex(documents: documents)
-        }.value
+        let modelID = embedder?.id
+        if let update = try? SearchCorpus.update(for: index, context: context, embeddingModelID: modelID),
+           !update.rebuild, index != nil {
+            PerfTrace.measure("Search index update") {
+                index?.remove(update.remove)
+                index?.add(update.add)
+            }
+        } else {
+            guard let documents = try? SearchCorpus.documents(context: context, embeddingModelID: modelID) else { return }
+            let start = Date()
+            index = await Task.detached(priority: .userInitiated) {
+                HybridSearchIndex(documents: documents)
+            }.value
+            PerfTrace.record("Search index build", milliseconds: Date().timeIntervalSince(start) * 1_000)
+        }
         indexedFingerprint = fingerprint
+        isStale = false
     }
 }
 

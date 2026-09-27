@@ -23,6 +23,8 @@ struct GraphView: View {
     @State private var selected: ThemeNode?
     @State private var showingReview = false
     @AppStorage("graph.showsList") private var showsList = false
+    /// Strengths are rescaled for decay instead of recomputed on every visit.
+    @State private var strengths = ThemeStrengthCache()
     @Environment(\.accessibilityVoiceOverEnabled) private var voiceOverEnabled
 
     /// The list reads well with VoiceOver and large text; the canvas doesn't.
@@ -130,8 +132,10 @@ struct GraphView: View {
     }
 
     private func rebuild() {
-        let built = (try? GraphSnapshot.build(context: context, scope: graphScope, includeDormant: showDormant))
-            ?? GraphSnapshot(nodes: [], edges: [])
+        let built = PerfTrace.measure("Graph snapshot") {
+            (try? GraphSnapshot.build(context: context, scope: graphScope, includeDormant: showDormant,
+                                      strengths: strengths)) ?? GraphSnapshot(nodes: [], edges: [])
+        }
         snapshot = built
         positions = ForceLayout.layout(built)
     }

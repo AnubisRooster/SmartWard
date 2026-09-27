@@ -127,8 +127,16 @@ public struct HybridSearchIndex: Sendable {
     private var matrix: [Float] = []
     private var vectorIDs: [String] = []
     private var dimension = 0
+    /// Ids removed since the last build. Their postings and vectors stay
+    /// (they're skipped at query time) until a rebuild clears them.
+    public private(set) var retired = Set<String>()
 
     public init(documents: [SearchDocument]) {
+        add(documents)
+    }
+
+    /// Adds documents in place: new articles and chunks don't need a rebuild.
+    public mutating func add(_ documents: [SearchDocument]) {
         for document in documents {
             lexical.add(id: document.id, text: document.text)
             self.documents[document.id] = document
@@ -139,6 +147,21 @@ public struct HybridSearchIndex: Sendable {
             matrix.append(contentsOf: unit)
             vectorIDs.append(document.id)
         }
+    }
+
+    /// Stops returning these documents.
+    public mutating func remove(_ ids: some Sequence<String>) {
+        for id in ids where documents.removeValue(forKey: id) != nil {
+            retired.insert(id)
+        }
+    }
+
+    public var documentIDs: Set<String> { Set(documents.keys) }
+
+    /// Rebuild once removed documents are a fifth of what's stored: they
+    /// still cost time at query time, and a retired id can't be re-added.
+    public var needsRebuild: Bool {
+        retired.count > max(500, documents.count / 5)
     }
 
     static func normalized(_ vector: [Float]) -> [Float]? {
@@ -248,6 +271,88 @@ public struct HybridSearchIndex: Sendable {
 }
 
 public enum SearchCorpus {
+    /// What changed in the library since `index` was built.
+    public struct Update: Equatable, Sendable {
+        public var add: [SearchDocument] = []
+        public var remove: Set<String> = []
+        /// Too much changed, or an id came back: build a new index instead.
+        public var rebuild = false
+
+        public var isEmpty: Bool { add.isEmpty && remove.isEmpty && !rebuild }
+    }
+
+    /// Diffs the library's article and chunk ids against `index`, loading
+    /// only new documents.
+    @MainActor
+    public static func update(for index: HybridSearchIndex?, context: ModelContext,
+                              embeddingModelID: String?) throws -> Update {
+        guard let index else { return Update(rebuild: true) }
+        var articleIDs = FetchDescriptor<Article>()
+        articleIDs.propertiesToFetch = [\.id]
+        var chunkIDs = FetchDescriptor<KnowledgeStore.Chunk>(predicate: #Predicate { $0.article != nil })
+        chunkIDs.propertiesToFetch = [\.id]
+        var current = Set<String>()
+        var articles: [UUID: String] = [:]
+        var chunks: [UUID: String] = [:]
+        for article in try context.fetch(articleIDs) {
+            let id = "article:\(article.id.uuidString)"
+            current.insert(id)
+            articles[article.id] = id
+        }
+        for chunk in try context.fetch(chunkIDs) {
+            let id = "chunk:\(chunk.id.uuidString)"
+            current.insert(id)
+            chunks[chunk.id] = id
+        }
+
+        let indexed = index.documentIDs
+        var update = Update()
+        update.remove = indexed.subtracting(current)
+        let added = current.subtracting(indexed)
+        if !added.isDisjoint(with: index.retired) || index.retired.count + update.remove.count > max(500, current.count / 5) {
+            return Update(rebuild: true)
+        }
+        let newArticles = articles.filter { added.contains($0.value) }.map(\.key)
+        let newChunks = chunks.filter { added.contains($0.value) }.map(\.key)
+        update.add = try documents(context: context, embeddingModelID: embeddingModelID,
+                                   articleIDs: newArticles, chunkIDs: newChunks)
+        return update
+    }
+
+    /// Just these articles' headers and these chunks.
+    @MainActor
+    public static func documents(context: ModelContext, embeddingModelID: String?,
+                                 articleIDs: [UUID], chunkIDs: [UUID]) throws -> [SearchDocument] {
+        var documents: [SearchDocument] = []
+        if !articleIDs.isEmpty {
+            for article in try context.fetch(FetchDescriptor<Article>(predicate: #Predicate { articleIDs.contains($0.id) })) {
+                documents.append(header(article))
+            }
+        }
+        if !chunkIDs.isEmpty {
+            var descriptor = FetchDescriptor<KnowledgeStore.Chunk>(predicate: #Predicate { chunkIDs.contains($0.id) })
+            descriptor.relationshipKeyPathsForPrefetching = [\.article]
+            for chunk in try context.fetch(descriptor) {
+                if let document = self.document(chunk, embeddingModelID: embeddingModelID) { documents.append(document) }
+            }
+        }
+        return documents
+    }
+
+    static func header(_ article: Article) -> SearchDocument {
+        let text = [article.title, article.summary].filter { !$0.isEmpty }.joined(separator: "\n")
+        return SearchDocument(id: "article:\(article.id.uuidString)", articleID: article.id, text: text)
+    }
+
+    static func document(_ chunk: KnowledgeStore.Chunk, embeddingModelID: String?) -> SearchDocument? {
+        guard let article = chunk.article else { return nil }
+        var vector: [Float]?
+        if let data = chunk.vector, let embeddingModelID, chunk.embeddingModel == embeddingModelID {
+            vector = VectorCoding.vector(from: data)
+        }
+        return SearchDocument(id: "chunk:\(chunk.id.uuidString)", articleID: article.id, text: chunk.text, vector: vector)
+    }
+
     /// Every article (title and summary, including off-topic ones, which
     /// stay searchable) plus every chunk. Vectors are included only when
     /// they came from `embeddingModelID`.
@@ -255,20 +360,13 @@ public enum SearchCorpus {
     public static func documents(context: ModelContext, embeddingModelID: String?) throws -> [SearchDocument] {
         var documents: [SearchDocument] = []
         for article in try context.fetch(FetchDescriptor<Article>()) {
-            let header = [article.title, article.summary].filter { !$0.isEmpty }.joined(separator: "\n")
-            documents.append(SearchDocument(id: "article:\(article.id.uuidString)", articleID: article.id, text: header))
+            documents.append(header(article))
         }
         var chunks = FetchDescriptor<KnowledgeStore.Chunk>()
         // One query for the articles instead of a fault per chunk.
         chunks.relationshipKeyPathsForPrefetching = [\.article]
         for chunk in try context.fetch(chunks) {
-            guard let article = chunk.article else { continue }
-            var vector: [Float]?
-            if let data = chunk.vector, let embeddingModelID, chunk.embeddingModel == embeddingModelID {
-                vector = VectorCoding.vector(from: data)
-            }
-            documents.append(SearchDocument(id: "chunk:\(chunk.id.uuidString)", articleID: article.id,
-                                            text: chunk.text, vector: vector))
+            if let document = document(chunk, embeddingModelID: embeddingModelID) { documents.append(document) }
         }
         return documents
     }
