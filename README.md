@@ -32,6 +32,7 @@ Phase 3 knowledge graph and GraphRAG, done:
 Phase 4 strategist, in progress:
 
 - [x] Approval before actions: the strategist can read a public web page (`fetch_url`) or follow a new source (`add_source`), but each one pauses on a card showing exactly what it will do, and runs only if you tap Approve. Each mode gets its own tools: critique can read pages but not add sources, weekly review sticks to your library and projects, and onboarding uses none
+- [x] Living project brief: the strategist can propose a revised brief mid-chat, and "Suggest an update" drafts one from what's been decided since the last revision. Each suggestion is a line diff you accept or reject, your own edits apply at once, and every accepted change is kept in a history you can restore from. Open decisions, questions and action items are listed on the project, and you can swipe to close them
 
 ## Requirements
 

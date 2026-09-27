@@ -100,6 +100,8 @@ struct ProjectDetailView: View {
                 TextField("Goal", text: $project.goal, axis: .vertical)
                 TextField("Constraints", text: $project.constraints, axis: .vertical)
             }
+            BriefSection(project: project)
+            StrategyItemsSection(project: project)
             Section {
                 ForEach(links) { link in
                     Label(link.repoFullName ?? link.url,

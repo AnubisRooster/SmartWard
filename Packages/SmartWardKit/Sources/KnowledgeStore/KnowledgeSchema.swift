@@ -7,6 +7,7 @@ public enum KnowledgeSchema {
     public static let models: [any PersistentModel.Type] = [
         Project.self,
         ProjectBrief.self,
+        BriefRevision.self,
         StrategyItem.self,
         ProjectLink.self,
         InterestProfile.self,

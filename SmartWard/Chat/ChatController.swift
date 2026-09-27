@@ -85,7 +85,8 @@ final class ChatController {
             AddSourceTool(context: context),
         ]
         if let project {
-            tools += [ProjectStateTool(project: project), RecordStrategyItemTool(project: project)]
+            tools += [ProjectStateTool(project: project), RecordStrategyItemTool(project: project),
+                      ProposeBriefUpdateTool(project: project)]
         }
         tools = tools.filter { allowed.contains($0.definition.name) }
 
