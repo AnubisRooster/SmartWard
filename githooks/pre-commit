@@ -1,0 +1,23 @@
+#!/bin/sh
+# Refresh the committed knowledge-graph artifacts before the commit is made.
+#
+# This has to be pre-commit rather than post-commit: docs/graphify/ is tracked,
+# so regenerating it afterwards would leave the tree dirty and the graph would
+# only be picked up by the next unrelated commit. Doing it here means the graph
+# that describes the new code ships in the same commit as the new code.
+#
+# Never blocks the commit. If graphify is missing or fails, the commit goes
+# through and CI regenerates the graph instead.
+REF=$(git rev-parse --show-toplevel)
+[ -x "$REF/scripts/graphify_refresh.sh" ] || exit 0
+
+if out=$("$REF/scripts/graphify_refresh.sh" 2>&1); then
+    printf '%s\n' "$out" | tail -1
+    # Only re-stage when the graph actually changed, so an unrelated commit
+    # does not report modifications it did not make.
+    git add docs/graphify 2>/dev/null || true
+else
+    echo "graphify: refresh failed, committing without updated graph artifacts" >&2
+    printf '%s\n' "$out" | tail -5 >&2
+fi
+exit 0

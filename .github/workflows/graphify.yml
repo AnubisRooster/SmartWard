@@ -41,23 +41,15 @@ jobs:
       # set under this commit's graphify version. The tracked semantic cache is
       # what makes reruns cheap, and the AST pass over 121 Swift files is fast
       # enough to redo from scratch every time.
-      - name: Build knowledge graph
+      # One shared script for CI and the git hooks, so a local commit and a CI
+      # run cannot produce different graphs from two copies of the same logic.
+      - name: Build and refresh the knowledge graph
         # Code is extracted structurally, so this succeeds with no API key. The
         # semantic pass over docs/PLAN.md and the README reads the tracked
         # cache at docs/graphify/semantic-extraction.json, so the graph here is
-        # the same 2,653-node graph a local run produces. Set GEMINI_API_KEY as
-        # a repository secret to regenerate that cache instead of reusing it.
-        run: python scripts/graphify_pipeline.py
-
-      - name: Export interactive HTML
-        run: graphify export html
-
-      - name: Move outputs into repo
-        run: |
-          mkdir -p docs/graphify
-          cp graphify-out/graph.html docs/graphify/graph.html
-          cp graphify-out/GRAPH_REPORT.md docs/graphify/GRAPH_REPORT.md
-          cp graphify-out/graph.json docs/graphify/graph.json
+        # the same graph a local run produces. Set GEMINI_API_KEY as a
+        # repository secret to regenerate that cache instead of reusing it.
+        run: scripts/graphify_refresh.sh
 
       # graph.html and graph.json together are ~7 MB and are rewritten on
       # every refresh, so each run adds a few MB of history. To keep the

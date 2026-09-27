@@ -1,12 +1,28 @@
 #!/bin/sh
-# GitNexus: keep the knowledge graph fresh after every commit.
-# Non-blocking: runs the incremental re-index in the background and logs to
-# .gitnexus/hook.log. Activate once per clone with:
-#   git config core.hooksPath githooks
-(
-  command -v gitnexus >/dev/null 2>&1 || exit 0
-  mkdir -p .gitnexus
-  echo "[$(date -Iseconds)] post-commit reindex started" >> .gitnexus/hook.log
-  gitnexus analyze . --skip-agents-md --skip-skills >> .gitnexus/hook.log 2>&1
-  echo "[$(date -Iseconds)] post-commit reindex done" >> .gitnexus/hook.log
-) &
+# Re-index the GitNexus knowledge graph after a commit.
+#
+# Runs in the foreground on purpose. Backgrounding it made the hook return
+# before the index was written, so an immediately following query could read a
+# stale graph; the incremental pass takes about ten seconds, which is a fair
+# price for an index that is correct when the commit finishes.
+#
+# Never blocks anything: post-commit cannot abort a commit anyway, and a
+# failure here is logged rather than surfaced as a scary message.
+command -v gitnexus >/dev/null 2>&1 || exit 0
+cd "$(git rev-parse --show-toplevel)" || exit 0
+mkdir -p .gitnexus
+LOG=.gitnexus/hook.log
+STAMP() { date -u +%Y-%m-%dT%H:%M:%SZ; }
+
+echo "[$(STAMP)] post-commit reindex started" >>"$LOG"
+if out=$(gitnexus analyze . --skip-agents-md --skip-skills 2>&1); then
+    echo "[$(STAMP)] post-commit reindex done" >>"$LOG"
+    printf '%s\n' "$out" >>"$LOG"
+    printf '%s\n' "$out" | grep -Eo '[0-9,]+ nodes .* [0-9]+ flows' | tail -1 |
+        sed 's/^/gitnexus: /'
+else
+    echo "[$(STAMP)] post-commit reindex FAILED" >>"$LOG"
+    printf '%s\n' "$out" >>"$LOG"
+    echo "gitnexus: reindex failed, see .gitnexus/hook.log" >&2
+fi
+exit 0

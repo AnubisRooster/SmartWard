@@ -1,10 +1,37 @@
 #!/bin/sh
-# GitNexus: keep the knowledge graph fresh after pull/merge (post-merge).
-# Same contract as post-commit: background re-index, logged to .gitnexus/hook.log.
-(
-  command -v gitnexus >/dev/null 2>&1 || exit 0
-  mkdir -p .gitnexus
-  echo "[$(date -Iseconds)] post-merge reindex started" >> .gitnexus/hook.log
-  gitnexus analyze . --skip-agents-md --skip-skills >> .gitnexus/hook.log 2>&1
-  echo "[$(date -Iseconds)] post-merge reindex done" >> .gitnexus/hook.log
-) &
+# Bring the knowledge graph and the GitNexus index up to date after a pull or
+# merge, both of which can introduce code the index has never seen.
+#
+# GitNexus re-indexes, then graphify rebuilds. A merge that changes source
+# leaves docs/graphify/ dirty, since the artifacts are committed and cannot be
+# written into a merge that already happened; that is expected and the message
+# says so rather than leaving the user to wonder why the tree is dirty.
+command -v gitnexus >/dev/null 2>&1 || exit 0
+cd "$(git rev-parse --show-toplevel)" || exit 0
+mkdir -p .gitnexus
+LOG=.gitnexus/hook.log
+STAMP() { date -u +%Y-%m-%dT%H:%M:%SZ; }
+
+echo "[$(STAMP)] post-merge reindex started" >>"$LOG"
+if out=$(gitnexus analyze . --skip-agents-md --skip-skills 2>&1); then
+    echo "[$(STAMP)] post-merge reindex done" >>"$LOG"
+    printf '%s\n' "$out" >>"$LOG"
+    printf '%s\n' "$out" | grep -Eo '[0-9,]+ nodes .* [0-9]+ flows' | tail -1 |
+        sed 's/^/gitnexus: /'
+else
+    echo "[$(STAMP)] post-merge reindex FAILED" >>"$LOG"
+    printf '%s\n' "$out" >>"$LOG"
+    echo "gitnexus: reindex failed, see .gitnexus/hook.log" >&2
+fi
+
+if [ -x scripts/graphify_refresh.sh ]; then
+    if graphify_out=$(scripts/graphify_refresh.sh 2>&1); then
+        printf '%s\n' "$graphify_out" | tail -1
+    else
+        echo "graphify: refresh failed after merge, see above" >&2
+    fi
+    if ! git diff --quiet -- docs/graphify 2>/dev/null; then
+        echo "graphify: docs/graphify/ updated by the merge; commit it to keep the graph in step"
+    fi
+fi
+exit 0
