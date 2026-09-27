@@ -33,6 +33,7 @@ Phase 4 strategist, in progress:
 
 - [x] Approval before actions: the strategist can read a public web page (`fetch_url`) or follow a new source (`add_source`), but each one pauses on a card showing exactly what it will do, and runs only if you tap Approve. Each mode gets its own tools: critique can read pages but not add sources, weekly review sticks to your library and projects, and onboarding uses none
 - [x] Living project brief: the strategist can propose a revised brief mid-chat, and "Suggest an update" drafts one from what's been decided since the last revision. Each suggestion is a line diff you accept or reject, your own edits apply at once, and every accepted change is kept in a history you can restore from. Open decisions, questions and action items are listed on the project, and you can swipe to close them
+- [x] Cost controls: Settings → Usage & budget shows what your provider cost today and over 7 or 30 days, by feature and by model. When a provider doesn't report cost, it's estimated from OpenRouter catalog prices, or high on purpose for unknown models. A daily budget ($1 by default) switches background work to on-device once it's spent. When a model is rate-limited or down, requests retry on your fallback models, then on OpenRouter catalog models that support the same features and cost no more
 
 ## Requirements
 

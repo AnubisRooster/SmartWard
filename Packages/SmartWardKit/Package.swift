@@ -29,6 +29,7 @@ let package = Package(
                 dependencies: [
                     "KnowledgeStore",
                     .product(name: "BYOKLLMKit", package: "OnDeviceKit"),
+                    .product(name: "ModelCatalogKit", package: "OnDeviceKit"),
                 ]),
         // The share extension links only this; keep it dependency-free.
         .target(name: "ShareInbox"),
@@ -57,6 +58,7 @@ let package = Package(
                         "StrategistCore",
                         "KnowledgeStore",
                         .product(name: "BYOKLLMKit", package: "OnDeviceKit"),
+                        .product(name: "ModelCatalogKit", package: "OnDeviceKit"),
                     ]),
         .testTarget(name: "IngestKitTests", dependencies: ["IngestKit", "KnowledgeStore", "ShareInbox"]),
         .testTarget(name: "PipelineTests",

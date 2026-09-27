@@ -48,6 +48,8 @@ targets:
       - package: OnDeviceKit
         product: BYOKLLMKit
       - package: OnDeviceKit
+        product: ModelCatalogKit
+      - package: OnDeviceKit
         product: PINLockKit
       - package: OnDeviceKit
         product: BiometricLockKit

@@ -510,6 +510,9 @@ public final class UsageRecord {
     public var inputTokens: Int = 0
     public var outputTokens: Int = 0
     public var costUSD: Double = 0
+    /// The provider didn't report a cost, so `costUSD` was estimated from
+    /// catalog prices (or a deliberately high default).
+    public var costEstimated: Bool = false
     public var createdAt: Date = Date()
 
     public init(provider: String, model: String, feature: String,

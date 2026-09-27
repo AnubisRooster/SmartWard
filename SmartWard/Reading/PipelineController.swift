@@ -41,7 +41,8 @@ final class PipelineController {
                                     fullText: IngestController.shared.fetcher,
                                     judge: FoundationModelsRelevanceJudge(),
                                     strength: strength,
-                                    extraction: ExtractionSettings.tiers())
+                                    extraction: ExtractionSettings.tiers(),
+                                    budget: BudgetSettings.current)
         do {
             lastReport = try await runner.run(context: context, until: Date().addingTimeInterval(budget))
         } catch {
