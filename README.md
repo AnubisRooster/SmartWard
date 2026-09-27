@@ -26,7 +26,7 @@ Phase 2 ingestion and search, done:
 Phase 3 knowledge graph and GraphRAG, in progress:
 
 - [x] Extraction and entity resolution: entities and relations from articles (on-device with Apple Intelligence), and from conversation turns and public repo docs (your provider, per D2; private repos and off-the-record chats stay on-device). Names resolve to one node through aliases and embedding similarity, with uncertain merges queued for review. Mentions and edges cite the chunk they came from, and the reader shows each article's themes
-- [ ] GraphRAG in chat, with "why retrieved" provenance
+- [x] GraphRAG in chat: each turn gets passages from your library, found by words, by meaning, or by one hop through the graph, fenced as untrusted and cited as [R1]. The strategist can also search the library, explore a theme's connections, and open an item. Each reply lists its sources and why each was retrieved
 - [ ] Graph view, node detail, and merge/split review
 
 ## Requirements

@@ -42,6 +42,7 @@ let package = Package(
                 dependencies: [
                     "KnowledgeStore",
                     "IngestKit",
+                    "StrategistCore",
                     .product(name: "RetrievalKit", package: "OnDeviceKit"),
                     .product(name: "BYOKLLMKit", package: "OnDeviceKit"),
                 ]),
@@ -63,6 +64,7 @@ let package = Package(
                         "Pipeline",
                         "KnowledgeStore",
                         "IngestKit",
+                        "StrategistCore",
                         .product(name: "RetrievalKit", package: "OnDeviceKit"),
                         .product(name: "BYOKLLMKit", package: "OnDeviceKit"),
                     ]),

@@ -1,6 +1,7 @@
 import SwiftUI
 import SwiftData
 import KnowledgeStore
+import Pipeline
 
 struct ConversationView: View {
     let conversation: Conversation
@@ -18,8 +19,13 @@ struct ConversationView: View {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 12) {
                     ForEach(messages) { message in
-                        MessageRow(role: message.role, text: message.content)
-                            .id(message.id)
+                        VStack(alignment: .leading, spacing: 6) {
+                            MessageRow(role: message.role, text: message.content)
+                            if let sources = SourcesList.passages(from: message.referencesJSON), !sources.isEmpty {
+                                SourcesList(passages: sources)
+                            }
+                        }
+                        .id(message.id)
                     }
                     if controller.isRunning {
                         ForEach(controller.activity, id: \.self) { line in
@@ -47,6 +53,9 @@ struct ConversationView: View {
         .safeAreaInset(edge: .bottom) { composer }
         .navigationTitle(conversation.title.isEmpty ? "New chat" : conversation.title)
         .navigationBarTitleDisplayMode(.inline)
+        .navigationDestination(for: Article.self) { article in
+            ArticleReaderView(article: article)
+        }
     }
 
     private var composer: some View {
@@ -90,5 +99,54 @@ private struct MessageRow: View {
             Text(LocalizedStringKey(text))
                 .textSelection(.enabled)
         }
+    }
+}
+
+/// The library passages a reply was given, and why each was retrieved (FR-11).
+struct SourcesList: View {
+    let passages: [RetrievedPassage]
+
+    @Environment(\.modelContext) private var context
+
+    static func passages(from json: String?) -> [RetrievedPassage]? {
+        guard let json, let data = json.data(using: .utf8) else { return nil }
+        return try? JSONDecoder().decode([RetrievedPassage].self, from: data)
+    }
+
+    var body: some View {
+        DisclosureGroup {
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(passages) { passage in
+                    if let article = linkedArticle(for: passage) {
+                        NavigationLink(value: article) { row(passage) }
+                            .buttonStyle(.plain)
+                    } else {
+                        row(passage)
+                    }
+                }
+            }
+            .padding(.top, 4)
+        } label: {
+            Label("Sources (\(passages.count))", systemImage: "books.vertical")
+                .font(.caption)
+        }
+        .foregroundStyle(.secondary)
+    }
+
+    private func row(_ passage: RetrievedPassage) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text("[\(passage.id)] \(passage.title)")
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.primary)
+                .lineLimit(2)
+            Label(passage.why.description,
+                  systemImage: passage.why.isGraphHop ? "point.3.connected.trianglepath.dotted" : "text.magnifyingglass")
+                .font(.caption2)
+        }
+    }
+
+    private func linkedArticle(for passage: RetrievedPassage) -> Article? {
+        guard let id = passage.articleID else { return nil }
+        return try? context.fetch(FetchDescriptor<Article>(predicate: #Predicate { $0.id == id })).first
     }
 }

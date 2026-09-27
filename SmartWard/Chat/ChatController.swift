@@ -48,16 +48,34 @@ final class ChatController {
         }
 
         let project = conversation.project
-        let system = StrategistPrompt.system(mode: conversation.mode,
+        var system = StrategistPrompt.system(mode: conversation.mode,
                                              project: project.map { ProjectSnapshot(project: $0) })
+
+        // GraphRAG: library passages for this turn, fenced as untrusted (PLAN §5.7).
+        let ledger = ReferenceLedger()
+        let conversationID = conversation.id
+        let found = await SearchController.shared.passages(for: text, excludingConversation: conversationID,
+                                                           context: context)
+        let references = ledger.register(found)
+        system += "\n\n" + ReferenceContext.guidance
+        if !references.isEmpty {
+            system += "\n\n" + ReferenceContext.render(references)
+        }
         let history = ConversationHistory.messages(from: conversation.messages ?? [])
         let request = LLMRequest(provider: provider,
                                  model: conversation.model,
                                  messages: [LLMChatMessage.system(system)] + history,
                                  maxTokens: 4096)
-        var tools: [any StrategistTool] = []
+        var tools: [any StrategistTool] = [
+            SearchCorpusTool(ledger: ledger) { query in
+                await SearchController.shared.passages(for: query, excludingConversation: conversationID,
+                                                       context: context)
+            },
+            GraphNeighborsTool(context: context),
+            OpenArticleTool(ledger: ledger, context: context),
+        ]
         if let project {
-            tools = [ProjectStateTool(project: project), RecordStrategyItemTool(project: project)]
+            tools += [ProjectStateTool(project: project), RecordStrategyItemTool(project: project)]
         }
 
         do {
@@ -70,7 +88,9 @@ final class ChatController {
                 .filter { !$0.isEmpty }
                 .joined(separator: "\n\n")
             if !reply.isEmpty {
-                conversation.messages?.append(Message(role: "assistant", content: reply))
+                let message = Message(role: "assistant", content: reply)
+                message.referencesJSON = Self.referencesJSON(ledger.passages)
+                conversation.messages?.append(message)
             }
             if !activity.isEmpty {
                 conversation.messages?.append(Message(role: "tool", content: activity.joined(separator: "\n")))
@@ -84,6 +104,18 @@ final class ChatController {
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    /// What a reply was given, for its Sources list: text is trimmed to a teaser.
+    static func referencesJSON(_ passages: [RetrievedPassage]) -> String? {
+        guard !passages.isEmpty else { return nil }
+        let stored = passages.map { passage -> RetrievedPassage in
+            var copy = passage
+            copy.text = String(passage.text.prefix(280))
+            return copy
+        }
+        guard let data = try? JSONEncoder().encode(stored) else { return nil }
+        return String(data: data, encoding: .utf8)
     }
 
     private func handle(_ event: StrategistEvent, provider: LLMProvider,
