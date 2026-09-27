@@ -34,7 +34,9 @@ public struct ProjectStateTool: StrategistTool {
     }
 }
 
-/// Records a durable strategy item (decision, open question, ...) on the project.
+/// Records a durable strategy item (decision, open question, ...) on the
+/// project. It persists and feeds the brief, so you approve each one
+/// (PLAN §5.7): text in an article can't plant a "decision".
 public struct RecordStrategyItemTool: StrategistTool {
     public let project: Project
 
@@ -48,7 +50,7 @@ public struct RecordStrategyItemTool: StrategistTool {
         let textSchema: JSONValue = ["type": "string", "description": "One self-contained sentence."]
         let properties: JSONValue = ["kind": kindSchema, "text": textSchema]
         return LLMTool(name: "record_strategy_item",
-                       description: "Saves a decision, open question, action item, assumption or risk to the project so it persists across conversations.",
+                       description: "Saves a decision, open question, action item, assumption or risk to the project so it persists across conversations. The user approves each one.",
                        inputSchema: ["type": "object", "properties": properties, "required": ["kind", "text"]])
     }
 
@@ -57,8 +59,10 @@ public struct RecordStrategyItemTool: StrategistTool {
         let text: String
     }
 
-    @MainActor
-    public func run(arguments: JSONValue) async throws -> String {
+    /// Longer than this isn't one sentence.
+    public static let maxLength = 500
+
+    func parse(_ arguments: JSONValue) throws -> (kind: StrategyItemKind, text: String) {
         let parsed: Arguments
         do {
             parsed = try arguments.decode(as: Arguments.self)
@@ -72,8 +76,25 @@ public struct RecordStrategyItemTool: StrategistTool {
         guard !text.isEmpty else {
             throw ProjectToolError.invalidArguments("text is empty")
         }
-        project.items?.append(StrategyItem(kind: kind, text: text))
-        return "Recorded \(StrategistPrompt.label(for: kind)): \(text)"
+        guard text.count <= Self.maxLength else {
+            throw ProjectToolError.invalidArguments("text is longer than \(Self.maxLength) characters")
+        }
+        return (kind, text)
+    }
+
+    @MainActor
+    public func confirmation(for arguments: JSONValue) throws -> ActionRequest? {
+        let item = try parse(arguments)
+        return ActionRequest(tool: "record_strategy_item",
+                             title: "Save \(StrategistPrompt.article(for: item.kind)) \(StrategistPrompt.label(for: item.kind)) to \(project.name)",
+                             detail: item.text)
+    }
+
+    @MainActor
+    public func run(arguments: JSONValue) async throws -> String {
+        let item = try parse(arguments)
+        project.items?.append(StrategyItem(kind: item.kind, text: item.text))
+        return "Recorded \(StrategistPrompt.label(for: item.kind)): \(item.text)"
     }
 }
 
