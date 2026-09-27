@@ -21,8 +21,9 @@ struct SettingsView: View {
                 Section {
                     NavigationLink("Usage & budget") { UsageView() }
                     NavigationLink("Export") { ExportView() }
+                    NavigationLink("Backup & restore") { BackupView() }
                 } footer: {
-                    Text("What your provider has cost, a daily cap for background work, and model fallback. Export your library as JSON, GraphML or Markdown.")
+                    Text("What your provider has cost, a daily cap for background work, and model fallback. Export your library as JSON, GraphML or Markdown, or back it up encrypted.")
                 }
                 ReadingSettingsSection()
                 DigestSettingsSection()

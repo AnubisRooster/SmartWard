@@ -7,7 +7,7 @@ Local-first iOS research strategist. The source of truth for requirements, desig
 - `ShareExtension/`: the share extension. It never opens the SwiftData store; it only writes to `ShareInbox`.
 - `SmartWard/`: the iOS app (SwiftUI). The Xcode project is generated from `project.yml` by XcodeGen and is not committed.
 - `Packages/SmartWardKit/`: local SPM package. Keep logic here, not in views, so `swift test` covers it without a simulator.
-  - `KnowledgeStore`: the SwiftData models, `KnowledgeSchema`, `ContextPolicy`, `ThemeStrength`, cost tracking (`UsageLedger`, `PriceBook`, `DailyBudget`), and export (`LibraryArchive`, the versioned JSON of every table; `MarkdownExport`).
+  - `KnowledgeStore`: the SwiftData models, `KnowledgeSchema`, `ContextPolicy`, `ThemeStrength`, cost tracking (`UsageLedger`, `PriceBook`, `DailyBudget`), export and backup (`LibraryArchive`, the versioned JSON of every table, with `restore(into:)` and `erase`; `EncryptedBackup`; `MarkdownExport`).
   - `IngestKit`: source ingestion and GitHub.
     - Sources: `SourceEndpoint` (what a user typed → the URL fetched), `SourceFetcher` (per-kind adapters), `FeedParser` (RSS/Atom/RDF), `ArticleExtractor` (SwiftSoup; HTML → clean text), `PolitenessGate` (rate limits, backoff, robots.txt), `FeedIngest` (dedupe and store).
     - GitHub: the GET-only `GitHubClient`, `GitHubDeviceFlow`, `GitHubTokenStore` (device-only Keychain), `ManifestParser`, and `RepoSync` (repo docs → articles, dependency radar).
@@ -33,7 +33,7 @@ Local-first iOS research strategist. The source of truth for requirements, desig
 - The brief's text changes only through `BriefEditing`: accepting a proposal, or your own edit. Both record a `BriefRevision`. The strategist and the reviser only propose, and a proposal made against text that has since changed is never applied.
 - Record every provider call with `UsageLedger.record`, which prices calls whose cost the provider didn't report, and never insert `UsageRecord`s directly. Background provider work must respect `DailyBudget` (see `GraphIndexer.withinBudget`): when the budget is spent it falls back to on-device or waits. Foreground calls in the app go through `ModelCatalogController.shared.fallbackLLM()`, so a 429 or 5xx rotates to a fallback model.
 - Every strategist turn must end: the runner's last round forces `toolChoice = .none`, and tool failures go back to the model as error results instead of aborting the turn.
-- When you add a model or a stored property, add it to `LibraryArchive` (its record and `snapshot`) in the same change, or export silently drops it.
+- When you add a model or a stored property, add it to `LibraryArchive` (its record, `snapshot` and `restore`) in the same change, or export and backup silently drop it; `BackupTests` checks that wipe → restore reproduces the library exactly.
 - Enum-backed model fields store a raw `String` with a literal default and expose a typed computed property that falls back on unknown values.
 
 ## Checks
