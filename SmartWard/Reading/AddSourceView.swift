@@ -142,11 +142,7 @@ struct AddSourceView: View {
     /// What's stored as the source's `url`: a normalized address for web
     /// sources, the user's query for searches.
     private var storedURL: String? {
-        guard let endpoint = SourceEndpoint.fetchURL(kind: choice.kind, input: trimmedInput) else { return nil }
-        switch choice {
-        case .arxiv, .hackerNews: return trimmedInput
-        case .feed, .hfPapers, .githubReleases, .site: return endpoint.absoluteString
-        }
+        SourceEndpoint.storedAddress(kind: choice.kind, input: trimmedInput)
     }
 
     private var defaultName: String {

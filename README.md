@@ -29,6 +29,10 @@ Phase 3 knowledge graph and GraphRAG, done:
 - [x] GraphRAG in chat: each turn gets passages from your library, found by words, by meaning, or by one hop through the graph, fenced as untrusted and cited as [R1]. The strategist can also search the library, explore a theme's connections, and open an item. Each reply lists its sources and why each was retrieved
 - [x] Graph view: the strongest themes by scope (all, last two weeks, a project, a source), with dormant themes hidden unless you ask. Theme detail shows strength, names, connections and where each theme came up, with rename, merge and split (your corrections always win). A review queue handles the resolver's uncertain merges
 
+Phase 4 strategist, in progress:
+
+- [x] Approval before actions: the strategist can read a public web page (`fetch_url`) or follow a new source (`add_source`), but each one pauses on a card showing exactly what it will do, and runs only if you tap Approve. Each mode gets its own tools: critique can read pages but not add sources, weekly review sticks to your library and projects, and onboarding uses none
+
 ## Requirements
 
 - Xcode 26+ and iOS 26+, on an iPhone 15 Pro or newer (Apple Intelligence-capable)

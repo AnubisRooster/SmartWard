@@ -1,5 +1,6 @@
 import XCTest
 import BYOKLLMKit
+import KnowledgeStore
 @testable import StrategistCore
 
 /// Plays back one scripted event list per `stream` call and records requests.
@@ -50,6 +51,24 @@ struct FailingTool: StrategistTool {
     @MainActor
     func run(arguments: JSONValue) async throws -> String {
         throw ProjectToolError.invalidArguments("nope")
+    }
+}
+
+/// Asks for approval before running; rejects `{"bad": true}` outright.
+final class GuardedTool: StrategistTool {
+    private(set) var runs = 0
+    var definition: LLMTool { LLMTool(name: "guarded", description: "Acts.", inputSchema: ["type": "object"]) }
+
+    @MainActor
+    func confirmation(for arguments: JSONValue) throws -> ActionRequest? {
+        if arguments == ["bad": true] { throw ProjectToolError.invalidArguments("bad target") }
+        return ActionRequest(tool: "guarded", title: "Do the thing", detail: "to x")
+    }
+
+    @MainActor
+    func run(arguments: JSONValue) async throws -> String {
+        runs += 1
+        return "done"
     }
 }
 
@@ -132,5 +151,79 @@ final class StrategistRunnerTests: XCTestCase {
         } catch {
             XCTAssertEqual(error as? StrategistError, .incompleteResponse)
         }
+    }
+
+    @MainActor
+    func testApprovedActionRuns() async throws {
+        let call = LLMToolCall(id: "c1", name: "guarded", arguments: [:])
+        let llm = ScriptedLLM([[.completed(reply("", calls: [call]))], [.completed(reply("Done."))]])
+        let tool = GuardedTool()
+        var asked: [ActionRequest] = []
+        var events: [StrategistEvent] = []
+        let produced = try await StrategistRunner(llm: llm).run(request: base, tools: [tool], confirm: { action in
+            asked.append(action)
+            return true
+        }) { events.append($0) }
+
+        let action = ActionRequest(tool: "guarded", title: "Do the thing", detail: "to x")
+        XCTAssertEqual(asked, [action])
+        XCTAssertEqual(tool.runs, 1)
+        XCTAssertEqual(produced[1], .toolResult(callID: "c1", content: "done"))
+        let start = try XCTUnwrap(events.firstIndex(of: .awaitingConfirmation(action)))
+        XCTAssertEqual(events[start + 1], .confirmationResolved(action, approved: true))
+        XCTAssertEqual(events[start + 2], .toolResult(name: "guarded", result: "done", isError: false))
+    }
+
+    @MainActor
+    func testDeclinedActionDoesNotRunAndTheModelIsTold() async throws {
+        let call = LLMToolCall(id: "c1", name: "guarded", arguments: [:])
+        let llm = ScriptedLLM([[.completed(reply("", calls: [call]))], [.completed(reply("OK, skipping it."))]])
+        let tool = GuardedTool()
+        let produced = try await StrategistRunner(llm: llm).run(request: base, tools: [tool],
+                                                               confirm: { _ in false }) { _ in }
+
+        XCTAssertEqual(tool.runs, 0)
+        XCTAssertEqual(produced[1].toolResults.first?.isError, true)
+        XCTAssertEqual(produced[1].toolResults.first?.content,
+                       "The user declined: Do the thing (to x). Don't retry it; carry on without it.")
+        XCTAssertEqual(llm.requests[1].messages.last, produced[1], "the model sees the refusal")
+    }
+
+    @MainActor
+    func testWithoutAConfirmHandlerActionsAreDeclined() async throws {
+        let call = LLMToolCall(id: "c1", name: "guarded", arguments: [:])
+        let llm = ScriptedLLM([[.completed(reply("", calls: [call]))], [.completed(reply("OK."))]])
+        let tool = GuardedTool()
+        _ = try await StrategistRunner(llm: llm).run(request: base, tools: [tool]) { _ in }
+        XCTAssertEqual(tool.runs, 0)
+    }
+
+    @MainActor
+    func testInvalidArgumentsAreRejectedWithoutAsking() async throws {
+        let call = LLMToolCall(id: "c1", name: "guarded", arguments: ["bad": true])
+        let llm = ScriptedLLM([[.completed(reply("", calls: [call]))], [.completed(reply("OK."))]])
+        let tool = GuardedTool()
+        var asked = 0
+        let produced = try await StrategistRunner(llm: llm).run(request: base, tools: [tool], confirm: { _ in
+            asked += 1
+            return true
+        }) { _ in }
+
+        XCTAssertEqual(asked, 0)
+        XCTAssertEqual(tool.runs, 0)
+        XCTAssertEqual(produced[1].toolResults.first?.content, "Invalid arguments: bad target")
+    }
+
+    func testModesAllowOnlyTheirTools() {
+        let brainstorm = StrategistPrompt.allowedTools(for: .brainstorm)
+        XCTAssertTrue(brainstorm.isSuperset(of: ["search_corpus", "fetch_url", "add_source", "record_strategy_item"]))
+        XCTAssertEqual(StrategistPrompt.allowedTools(for: .researchPlan), brainstorm)
+        let critique = StrategistPrompt.allowedTools(for: .critique)
+        XCTAssertTrue(critique.contains("fetch_url"))
+        XCTAssertFalse(critique.contains("add_source"))
+        let review = StrategistPrompt.allowedTools(for: .weeklyReview)
+        XCTAssertTrue(review.isDisjoint(with: ["fetch_url", "add_source"]))
+        XCTAssertTrue(review.contains("list_project_state"))
+        XCTAssertEqual(StrategistPrompt.allowedTools(for: .onboarding), [])
     }
 }
