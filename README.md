@@ -1,9 +1,15 @@
+<img src="docs/images/app-icon.png" alt="SmartWard icon" width="96" height="96">
+
 # SmartWard
 
 A local-first iPhone research strategist. SmartWard reads the AI and software-development world for you, keeps an on-device knowledge graph that links what you read with what you've discussed, and brainstorms your projects with the LLMs you bring your own keys for.
 
 - **Plan & design:** [docs/PLAN.md](docs/PLAN.md) covers requirements, the HLD, the data model, and phased delivery.
 - **Shared components:** [OnDeviceKit](https://github.com/AnubisRooster/OnDeviceKit), including BYOK LLM access, retrieval, the graph, and app lock.
+
+## Screenshots
+
+_Coming with the first on-device pass (see [docs/DEVICE_TESTING.md](docs/DEVICE_TESTING.md)) — CI only runs on the Simulator, so there are no real screens to show yet. Once captured, they'll go in `docs/images/` and get linked here._
 
 ## Status
 
