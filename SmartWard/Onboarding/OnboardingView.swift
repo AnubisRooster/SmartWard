@@ -228,7 +228,7 @@ private struct OnboardingLinksSheet: View {
                 } header: {
                     Text("One link per line")
                 } footer: {
-                    Text("Project repos (github.com/owner/name) or pages. Signing in to GitHub to pick repos is coming in a later update.")
+                    Text("Project repos (github.com/owner/name) or pages. To pick repos from your account instead, sign in to GitHub from Settings afterwards.")
                 }
             }
             .navigationTitle("Project links")

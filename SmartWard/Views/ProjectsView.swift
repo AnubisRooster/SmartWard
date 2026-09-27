@@ -123,8 +123,9 @@ struct ProjectDetailView: View {
             } header: {
                 Text("Links")
             } footer: {
-                Text("GitHub repos are recognized automatically. Syncing their docs arrives with GitHub sign-in.")
+                Text("GitHub repo links are recognized automatically and can be synced below.")
             }
+            GitHubProjectSection(project: project)
         }
         .navigationTitle(project.name)
     }

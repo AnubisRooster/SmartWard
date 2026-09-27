@@ -33,6 +33,8 @@ targets:
         product: KnowledgeStore
       - package: SmartWardKit
         product: StrategistCore
+      - package: SmartWardKit
+        product: IngestKit
       - package: OnDeviceKit
         product: BYOKLLMKit
     settings:
