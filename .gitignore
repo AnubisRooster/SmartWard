@@ -9,3 +9,8 @@ xcuserdata/
 *.xcuserstate
 
 .DS_Store
+
+# Knowledge-graph build output. The committed artifacts live in
+# docs/graphify/ and are refreshed by .github/workflows/graphify.yml.
+graphify-out/
+
