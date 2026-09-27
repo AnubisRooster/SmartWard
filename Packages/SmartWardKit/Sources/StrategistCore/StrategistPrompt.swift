@@ -90,11 +90,31 @@ public enum StrategistPrompt {
             """
         case .onboarding:
             return """
-            Mode: Onboarding. Learn what the user is building, what's blocking them, and what they want to keep up \
-            with. Ask one question at a time and keep it short.
+            Mode: Onboarding. You are setting SmartWard up for a new user. Your first message, already shown, asked \
+            what they're building. Cover this checklist, one short question at a time, following up only when an \
+            answer is vague: \(onboardingChecklist.joined(separator: "; ")). Ask them to paste links to project repos \
+            or pages in the links field. Keep it under ten questions. When the checklist is covered, briefly summarize \
+            what you heard and tell them to tap "Build my setup".
             """
         }
     }
+
+    /// What the onboarding interview must cover (PLAN §5.8).
+    public static let onboardingChecklist = [
+        "the projects they're building and each one's goal",
+        "what's blocking them right now",
+        "topics and technologies they want to keep up with",
+        "topics they want to ignore",
+        "sources they already trust (blogs, newsletters, researchers, labs)",
+        "links to their project repos or pages",
+    ]
+
+    /// The first assistant message of an onboarding interview, shown without a
+    /// model call.
+    public static let onboardingGreeting = """
+    Hi, I'm SmartWard. I'll ask a few quick questions so I can follow the right research for you and connect it \
+    to your work. To start: what are you building right now? Name each project and what you want it to do.
+    """
 
     static func grounding(hasProject: Bool) -> String {
         var rules = """
