@@ -23,11 +23,11 @@ Phase 2 ingestion and search, done:
 - [x] Hybrid search: keyword (BM25, with compound tokens like "SWE-bench" kept whole) and semantic search fused per article, on-device, from the Reading tab's search field. Off-topic items are included
 - [x] Background refresh and the share extension: hourly background polling, backlog processing while charging, a Refresh that keeps going with system progress after you leave the app, and "Add to SmartWard" from any app's share sheet (optionally tagged to a project)
 
-Phase 3 knowledge graph and GraphRAG, in progress:
+Phase 3 knowledge graph and GraphRAG, done:
 
 - [x] Extraction and entity resolution: entities and relations from articles (on-device with Apple Intelligence), and from conversation turns and public repo docs (your provider, per D2; private repos and off-the-record chats stay on-device). Names resolve to one node through aliases and embedding similarity, with uncertain merges queued for review. Mentions and edges cite the chunk they came from, and the reader shows each article's themes
 - [x] GraphRAG in chat: each turn gets passages from your library, found by words, by meaning, or by one hop through the graph, fenced as untrusted and cited as [R1]. The strategist can also search the library, explore a theme's connections, and open an item. Each reply lists its sources and why each was retrieved
-- [ ] Graph view, node detail, and merge/split review
+- [x] Graph view: the strongest themes by scope (all, last two weeks, a project, a source), with dormant themes hidden unless you ask. Theme detail shows strength, names, connections and where each theme came up, with rename, merge and split (your corrections always win). A review queue handles the resolver's uncertain merges
 
 ## Requirements
 

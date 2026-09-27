@@ -8,10 +8,8 @@ struct RootView: View {
 
     var body: some View {
         TabView {
-            Tab("Today", systemImage: "sun.max") {
-                ComingSoonView(title: "Today",
-                               systemImage: "sun.max",
-                               message: "Your digest of new research, clustered by theme, lands here once sources are connected.")
+            Tab("Graph", systemImage: "point.3.connected.trianglepath.dotted") {
+                GraphView()
             }
             Tab("Reading", systemImage: "newspaper") {
                 ReadingView()
