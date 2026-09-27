@@ -206,6 +206,17 @@ def main() -> int:
     wrote = to_json(G, communities, str(OUT / "graph.json"), community_labels=labels)
     if not wrote:
         print("WARN: graph.json write refused (shrink guard #479) - keeping previous graph.json")
+    else:
+        # Drop the commit stamp so the graph is a pure function of the source
+        # tree. Two problems with keeping it: the pre-commit hook builds before
+        # the commit exists, so the recorded SHA could only ever be the parent,
+        # and every commit would rewrite the field and leave the artifact dirty
+        # forever. Git already records which commit each artifact landed in.
+        gp = OUT / "graph.json"
+        payload = json.loads(gp.read_text(encoding="utf-8"))
+        if payload.pop("built_at_commit", None) is not None:
+            gp.write_text(json.dumps(payload, ensure_ascii=False, indent=1), encoding="utf-8")
+            print("Stripped built_at_commit so the artifact depends only on the source tree")
 
     report = generate(
         G,
