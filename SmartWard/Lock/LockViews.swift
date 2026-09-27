@@ -12,7 +12,9 @@ struct LockScreen: View {
         VStack(spacing: 24) {
             Spacer()
             Image(systemName: "lock.fill")
-                .font(.system(size: 44))
+                .font(.largeTitle)
+                .imageScale(.large)
+                .accessibilityHidden(true)
                 .foregroundStyle(.secondary)
             Text("SmartWard is locked")
                 .font(.title2.bold())
@@ -71,7 +73,9 @@ struct PrivacyCover: View {
         ZStack {
             Rectangle().fill(.regularMaterial)
             Image(systemName: "lock.fill")
-                .font(.system(size: 44))
+                .font(.largeTitle)
+                .imageScale(.large)
+                .accessibilityHidden(true)
                 .foregroundStyle(.secondary)
         }
         .ignoresSafeArea()

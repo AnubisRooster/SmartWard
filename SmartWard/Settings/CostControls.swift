@@ -120,6 +120,8 @@ struct UsageView: View {
                 if cap > 0 {
                     ProgressView(value: min(today / cap, 1))
                         .tint(today >= cap ? .red : .accentColor)
+                        .accessibilityLabel("Today's budget")
+                        .accessibilityValue("\(Self.money(today, estimated: false)) of \(Self.money(cap, estimated: false))")
                 }
                 Picker("Daily budget", selection: $cap) {
                     ForEach(BudgetSettings.choices, id: \.self) { choice in
@@ -144,6 +146,9 @@ struct UsageView: View {
                 .pickerStyle(.segmented)
                 LabeledContent("Total", value: Self.money(total, estimated: anyEstimated))
                 LabeledContent("Calls", value: records.count.formatted())
+                if records.isEmpty {
+                    Text("No provider calls in this period.").foregroundStyle(.secondary)
+                }
             } header: {
                 Text("History")
             } footer: {
