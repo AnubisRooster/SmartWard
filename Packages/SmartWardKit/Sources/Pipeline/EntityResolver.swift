@@ -53,13 +53,13 @@ public final class EntityResolver {
     }
 
     /// Case-, spacing-, hyphen- and underscore-insensitive label key.
-    public static func key(_ label: String) -> String {
+    public nonisolated static func key(_ label: String) -> String {
         String(ThemeNode.normalizedKey(type: "", label: label).dropFirst())
     }
 
     /// The version-like tokens in a label: "Llama 3.1 8B" → ["3", "1", "8b"],
     /// "GPT-4o" → ["4o"].
-    static func versionTokens(in label: String) -> [String] {
+    nonisolated static func versionTokens(in label: String) -> [String] {
         label.lowercased()
             .split(whereSeparator: { !$0.isLetter && !$0.isNumber })
             .map(String.init)
