@@ -12,7 +12,9 @@ Phase 1 foundation, in progress:
 - [x] `SmartWardKit/KnowledgeStore`: the full SwiftData model (CloudKit-compatible), the private-content policy, and derived theme strength
 - [x] App shell: tabs, SwiftData-backed Projects with repo/URL links, and BYOK key settings
 - [x] Strategist chat: streaming BYOK chat with four modes, scoped to a project, where the strategist can read project state and record decisions and open questions
-- [ ] Onboarding interview, and app lock
+- [x] Onboarding interview: key and Apple Intelligence preflight, a strategist-led interview with pasted links, and a structured setup proposal you edit before anything is created
+- [ ] GitHub sign-in and repo sync
+- [ ] App lock
 
 ## Requirements
 

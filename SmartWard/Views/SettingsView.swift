@@ -2,6 +2,8 @@ import SwiftUI
 import BYOKLLMKit
 
 struct SettingsView: View {
+    @AppStorage("onboarding.completed") private var onboardingCompleted = false
+
     var body: some View {
         NavigationStack {
             Form {
@@ -14,6 +16,13 @@ struct SettingsView: View {
                 } footer: {
                     Text("Keys are stored only in this device's Keychain. An OpenRouter key alone reaches Anthropic, OpenAI, xAI and open models.")
                 }
+                Section {
+                    Button("Run setup again") { onboardingCompleted = false }
+                } header: {
+                    Text("Setup")
+                } footer: {
+                    Text("Re-runs the onboarding interview. Existing projects are kept; new links, sources and topics are merged in.")
+                }
                 Section("About") {
                     LabeledContent("Version",
                                    value: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "–")
@@ -24,8 +33,10 @@ struct SettingsView: View {
     }
 }
 
-private struct ProviderKeyRow: View {
+struct ProviderKeyRow: View {
     let provider: LLMProvider
+    /// Called after a key is saved or removed.
+    var onChange: () -> Void = {}
     @State private var key = ""
     @State private var hasKey = false
 
@@ -61,10 +72,12 @@ private struct ProviderKeyRow: View {
         LLMKeychainStore.shared.set(key, for: provider)
         key = ""
         hasKey = true
+        onChange()
     }
 
     private func remove() {
         LLMKeychainStore.shared.delete(for: provider)
         hasKey = false
+        onChange()
     }
 }
