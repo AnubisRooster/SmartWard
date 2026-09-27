@@ -107,7 +107,7 @@ public struct AddSourceTool: StrategistTool {
     private let context: ModelContext
 
     /// What the strategist may add: public feeds, not repos or shared items.
-    public static let kinds: [SourceKind] = [.rss, .site, .arxiv, .hn, .githubReleases, .hfPapers]
+    public static var kinds: [SourceKind] { SourceIntake.kinds }
 
     public init(context: ModelContext) {
         self.context = context
@@ -133,36 +133,15 @@ public struct AddSourceTool: StrategistTool {
         let title: String?
     }
 
-    struct Plan: Equatable {
-        let kind: SourceKind
-        let url: String
-        let title: String
-    }
-
     @MainActor
-    func plan(_ arguments: JSONValue) throws -> Plan {
+    func plan(_ arguments: JSONValue) throws -> SourceIntake.Plan {
         guard let parsed = try? arguments.decode(as: Arguments.self) else {
             throw ProjectToolError.invalidArguments("expected {kind, address, title}")
         }
-        guard let kind = SourceKind(rawValue: parsed.kind), Self.kinds.contains(kind) else {
-            throw ProjectToolError.invalidArguments("unknown kind '\(parsed.kind)'")
+        guard let kind = SourceKind(rawValue: parsed.kind) else {
+            throw SourceIntake.Refusal.unsupportedKind(parsed.kind)
         }
-        let address = parsed.address.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard address.count <= FetchURLTool.maxURLLength,
-              let url = SourceEndpoint.storedAddress(kind: kind, input: address) else {
-            throw ProjectToolError.invalidArguments("'\(address)' isn't a valid \(kind.rawValue) address")
-        }
-        if kind != .arxiv && kind != .hn, let web = URL(string: url) {
-            _ = try FetchURLTool.validate(web.absoluteString)
-        }
-        let key = url.lowercased()
-        let rawKind = kind.rawValue
-        let existing = try context.fetch(FetchDescriptor<Source>(predicate: #Predicate { $0.kind == rawKind }))
-        guard !existing.contains(where: { $0.url.lowercased() == key }) else {
-            throw ProjectToolError.invalidArguments("the user already follows this source")
-        }
-        let name = (parsed.title ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        return Plan(kind: kind, url: url, title: String((name.isEmpty ? address : name).prefix(80)))
+        return try SourceIntake.plan(kind: kind, address: parsed.address, title: parsed.title, context: context)
     }
 
     @MainActor
@@ -175,7 +154,7 @@ public struct AddSourceTool: StrategistTool {
     @MainActor
     public func run(arguments: JSONValue) async throws -> String {
         let plan = try plan(arguments)
-        context.insert(Source(kind: plan.kind.rawValue, url: plan.url, title: plan.title, origin: "strategist"))
+        SourceIntake.add(plan, origin: "strategist", context: context)
         return "Added \"\(plan.title)\" to the user's sources. It's fetched on the next refresh."
     }
 }

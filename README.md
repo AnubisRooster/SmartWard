@@ -41,6 +41,7 @@ Phase 5 hardening, in progress:
 
 - [x] Export: Settings → Export shares your library as versioned JSON (every table, relationships as ids, deterministic), the knowledge graph as GraphML (through OnDeviceKit's GraphKit) for Gephi or yEd, and projects as Markdown (goal, brief, decisions, open questions, action items and the brief's history). Private-repo content, links to private repos and themes found only there are left out unless you include them
 - [x] Encrypted backup and restore: Settings → Backup & restore writes the whole library, including private-repo content and embeddings, as one file. It's compressed and encrypted with AES-GCM, using a key derived from your passphrase with PBKDF2-SHA256 (600,000 rounds). Restoring erases the library and recreates every row, field and relationship exactly. A wrong passphrase or a damaged file never restores anything. API keys, your GitHub sign-in and settings stay out of the file
+- [x] Siri and Shortcuts: "Ask SmartWard" answers from your library and saves the chat. Actions that would need your approval are declined, and with the app lock on, Siri says where the answer is instead of reading it out. "Open my SmartWard digest" opens Today, and "Add a source to SmartWard" follows a feed, arXiv search, Hacker News search, GitHub releases or a web page, validated like the strategist's add_source
 
 ## Requirements
 

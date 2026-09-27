@@ -5,24 +5,25 @@ struct RootView: View {
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.modelContext) private var context
     @State private var lock = AppLockController.shared
+    @State private var navigation = AppNavigation.shared
 
     var body: some View {
         // Five tabs fit an iPhone tab bar without a "More" tab; Settings is
         // behind the gear on Today.
-        TabView {
-            Tab("Today", systemImage: "sun.max") {
+        TabView(selection: $navigation.tab) {
+            Tab("Today", systemImage: "sun.max", value: AppTab.today) {
                 TodayView()
             }
-            Tab("Reading", systemImage: "newspaper") {
+            Tab("Reading", systemImage: "newspaper", value: AppTab.reading) {
                 ReadingView()
             }
-            Tab("Graph", systemImage: "point.3.connected.trianglepath.dotted") {
+            Tab("Graph", systemImage: "point.3.connected.trianglepath.dotted", value: AppTab.graph) {
                 GraphView()
             }
-            Tab("Chat", systemImage: "bubble.left.and.bubble.right") {
+            Tab("Chat", systemImage: "bubble.left.and.bubble.right", value: AppTab.chat) {
                 ChatListView()
             }
-            Tab("Projects", systemImage: "folder") {
+            Tab("Projects", systemImage: "folder", value: AppTab.projects) {
                 ProjectsView()
             }
         }

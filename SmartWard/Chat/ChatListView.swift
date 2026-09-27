@@ -7,6 +7,7 @@ struct ChatListView: View {
     @Query(sort: \Conversation.updatedAt, order: .reverse) private var conversations: [Conversation]
     @State private var isCreating = false
     @State private var path: [Conversation] = []
+    @State private var navigation = AppNavigation.shared
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -36,6 +37,12 @@ struct ChatListView: View {
                 }
             }
             .navigationTitle("Chat")
+            .onChange(of: navigation.conversationToOpen, initial: true) { _, id in
+                // A chat started from Siri or Shortcuts.
+                guard let id, let conversation = conversations.first(where: { $0.id == id }) else { return }
+                path = [conversation]
+                navigation.conversationToOpen = nil
+            }
             .navigationDestination(for: Conversation.self) { conversation in
                 ConversationView(conversation: conversation)
             }
