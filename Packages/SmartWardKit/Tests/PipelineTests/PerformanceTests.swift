@@ -17,19 +17,20 @@ struct SeededRandom: RandomNumberGenerator {
     }
 }
 
+/// `TopK` is qualified: RetrievalKit has one too.
 final class TopKTests: XCTestCase {
 
     func testKeepsTheBestInOrderWithoutSortingEverything() {
         var random = SeededRandom(7)
         let values = (0..<5_000).map { _ in Int.random(in: 0..<1_000, using: &random) }
-        var best = TopK<Int>(25, ranksHigher: >)
+        var best = Pipeline.TopK<Int>(25, ranksHigher: >)
         values.forEach { best.insert($0) }
         XCTAssertEqual(best.sorted(), Array(values.sorted(by: >).prefix(25)))
 
-        var none = TopK<Int>(0, ranksHigher: >)
+        var none = Pipeline.TopK<Int>(0, ranksHigher: >)
         none.insert(1)
         XCTAssertEqual(none.sorted(), [])
-        var few = TopK<Int>(10, ranksHigher: >)
+        var few = Pipeline.TopK<Int>(10, ranksHigher: >)
         [3, 1, 2].forEach { few.insert($0) }
         XCTAssertEqual(few.sorted(), [3, 2, 1])
     }

@@ -21,6 +21,35 @@ public enum ActionTools {
     /// remembers, not just what the strategist reads, so it always asks.
     public static let autoApproveKey = "actions.autoApprove"
     public static let autoApprovableTools: Set<String> = ["fetch_url", "add_source"]
+
+    /// Every tool whose calls pause on an approval card (its
+    /// `confirmation(for:)` returns an `ActionRequest`).
+    public static let approvalGatedTools: Set<String> = ["fetch_url", "add_source", "record_strategy_item"]
+
+    /// How a pending action is answered. Hands-free (a voice conversation)
+    /// there's nobody to tap a card, so anything not auto-approved is
+    /// declined rather than left waiting forever.
+    public static func decision(for tool: String, autoApprove: Bool, handsFree: Bool,
+                                declinesAll: Bool) -> ApprovalDecision {
+        if declinesAll { return .decline }
+        if autoApprove && autoApprovableTools.contains(tool) { return .approve }
+        return handsFree ? .decline : .ask
+    }
+
+    /// The tools to offer when nobody can tap an approval card: `allowed`
+    /// minus every approval-gated tool that wouldn't be auto-approved, so
+    /// the strategist doesn't reach for one it can't use.
+    public static func handsFreeTools(_ allowed: Set<String>, autoApprove: Bool) -> Set<String> {
+        allowed.filter { !approvalGatedTools.contains($0) || (autoApprove && autoApprovableTools.contains($0)) }
+    }
+}
+
+/// How a strategist action waiting for approval is answered.
+public enum ApprovalDecision: Equatable, Sendable {
+    case approve
+    case decline
+    /// Show the card and wait for the user.
+    case ask
 }
 
 /// `fetch_url`: reads one public web page, after you approve the exact URL.

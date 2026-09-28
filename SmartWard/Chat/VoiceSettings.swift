@@ -11,33 +11,37 @@ enum VoiceSettings {
     static let ttsRateKey = "voice.ttsRate"
     static let voiceIDKey = "voice.voiceID"
 
+    /// VoiceLoopKit's own defaults, so Settings and the controller agree.
+    static let defaults = VoiceLoopConfig()
+
     static var current: VoiceLoopConfig {
-        let defaults = UserDefaults.standard
-        let silence = defaults.object(forKey: silenceIntervalKey) == nil
-            ? 5.0 : defaults.double(forKey: silenceIntervalKey)
-        let rate = defaults.object(forKey: ttsRateKey) == nil
-            ? 0.5 : defaults.double(forKey: ttsRateKey)
-        let voiceID = defaults.string(forKey: voiceIDKey) ?? ""
-        return VoiceLoopConfig(silenceInterval: silence, ttsRate: Float(rate), voiceID: voiceID)
+        let store = UserDefaults.standard
+        let silence = store.object(forKey: silenceIntervalKey) == nil
+            ? defaults.silenceInterval : store.double(forKey: silenceIntervalKey)
+        let rate = store.object(forKey: ttsRateKey) == nil
+            ? Double(defaults.ttsRate) : store.double(forKey: ttsRateKey)
+        return VoiceLoopConfig(silenceInterval: silence, ttsRate: Float(rate), ttsPitch: defaults.ttsPitch,
+                               voiceID: store.string(forKey: voiceIDKey) ?? defaults.voiceID)
     }
-}
 
-/// Settings → Voice conversation: speaking voice/rate and how long a pause
-/// ends your turn. Requires "Approve fetches and new sources automatically"
-/// (`ActionApprovalSettingsSection`, placed just above this one) — a
-/// hands-free turn that pauses on an approval card no one can tap has no way
-/// forward, so voice mode refuses to start until that's on.
-struct VoiceSettingsSection: View {
-    @AppStorage(VoiceSettings.silenceIntervalKey) private var silenceInterval = 5.0
-    @AppStorage(VoiceSettings.ttsRateKey) private var ttsRate = 0.5
-    @AppStorage(VoiceSettings.voiceIDKey) private var voiceID = ""
-    @AppStorage(ActionTools.autoApproveKey) private var autoApprove = false
-
-    private var voices: [AVSpeechSynthesisVoice] {
+    static func englishVoices() -> [AVSpeechSynthesisVoice] {
         AVSpeechSynthesisVoice.speechVoices()
             .filter { $0.language.hasPrefix("en") }
             .sorted { $0.name < $1.name }
     }
+}
+
+/// Settings → Voice conversation: speaking voice/rate and how long a pause
+/// ends your turn. Voice mode needs "Approve fetches and new sources
+/// automatically" (`ActionApprovalSettingsSection`, just above this one):
+/// a hands-free turn can't stop for an approval card.
+struct VoiceSettingsSection: View {
+    @AppStorage(VoiceSettings.silenceIntervalKey) private var silenceInterval = VoiceSettings.defaults.silenceInterval
+    @AppStorage(VoiceSettings.ttsRateKey) private var ttsRate = Double(VoiceSettings.defaults.ttsRate)
+    @AppStorage(VoiceSettings.voiceIDKey) private var voiceID = VoiceSettings.defaults.voiceID
+    @AppStorage(ActionTools.autoApproveKey) private var autoApprove = false
+    /// Loaded once: enumerating installed voices on every slider tick stutters.
+    @State private var voices: [AVSpeechSynthesisVoice] = []
 
     var body: some View {
         Section {
@@ -60,9 +64,11 @@ struct VoiceSettingsSection: View {
         } header: {
             Text("Voice conversation")
         } footer: {
-            Text(autoApprove
-                 ? "Used when you tap the mic in a chat to talk instead of type."
-                 : "Used when you tap the mic in a chat to talk instead of type. Needs \"Approve fetches and new sources automatically\" turned on above — otherwise a hands-free turn could stall on an approval card with no way to tap it.")
+            Text("Used when you tap the mic in a chat to talk instead of type. Speech is transcribed on-device where possible, and always in off-the-record chats. "
+                 + (autoApprove
+                    ? "Saving decisions or open items is left for typed chats."
+                    : "Needs \"Approve fetches and new sources automatically\" turned on above: a hands-free turn can't stop for an approval card."))
         }
+        .task { if voices.isEmpty { voices = VoiceSettings.englishVoices() } }
     }
 }
