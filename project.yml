@@ -53,6 +53,8 @@ targets:
         product: PINLockKit
       - package: OnDeviceKit
         product: BiometricLockKit
+      - package: OnDeviceKit
+        product: VoiceLoopKit
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.intelligentdesignsllc.smartward
@@ -64,6 +66,8 @@ targets:
         CODE_SIGN_ENTITLEMENTS: SmartWard/SmartWard.entitlements
         INFOPLIST_KEY_CFBundleDisplayName: SmartWard
         INFOPLIST_KEY_NSFaceIDUsageDescription: "SmartWard uses Face ID to unlock your research and conversations."
+        INFOPLIST_KEY_NSMicrophoneUsageDescription: "SmartWard uses the microphone so you can talk to the strategist instead of typing."
+        INFOPLIST_KEY_NSSpeechRecognitionUsageDescription: "SmartWard transcribes what you say, on-device when possible, so you can talk to the strategist instead of typing."
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
         INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait

@@ -31,12 +31,16 @@ final class ChatController {
         self.llm = llm
     }
 
-    func send(in conversation: Conversation, context: ModelContext) async {
+    /// - Returns: the assistant's reply text, or `nil` if the turn produced
+    ///   none (an error, or a tool-only round) — voice mode speaks this;
+    ///   the text composer ignores it.
+    @discardableResult
+    func send(in conversation: Conversation, context: ModelContext) async -> String? {
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty, !isRunning else { return }
+        guard !text.isEmpty, !isRunning else { return nil }
         guard let provider = LLMProvider(rawValue: conversation.provider) else {
             errorMessage = "This chat's provider '\(conversation.provider)' isn't available. Start a new chat."
-            return
+            return nil
         }
 
         draft = ""
@@ -129,8 +133,10 @@ final class ChatController {
                 try? await Task.sleep(nanoseconds: UInt64((PipelineRunner.turnSettleTime + 1) * 1_000_000_000))
                 await PipelineController.shared.process(context: context)
             }
+            return reply.isEmpty ? nil : reply
         } catch {
             errorMessage = error.localizedDescription
+            return nil
         }
     }
 
