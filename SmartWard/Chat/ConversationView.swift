@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import AVFoundation
 import KnowledgeStore
 import Pipeline
 import BYOKLLMKit
@@ -10,7 +11,9 @@ struct ConversationView: View {
     let conversation: Conversation
 
     @Environment(\.modelContext) private var context
+    @Environment(\.scenePhase) private var scenePhase
     @State private var controller = ChatController()
+    @State private var lock = AppLockController.shared
     @StateObject private var voice = VoiceConversationController()
     @AppStorage(ActionTools.autoApproveKey) private var autoApprove = false
     @State private var showingVoiceGate = false
@@ -78,15 +81,25 @@ struct ConversationView: View {
         .navigationBarTitleDisplayMode(.inline)
         .onDisappear {
             controller.resolve(approved: false)
-            voice.stop()
+            stopVoice()
         }
         .onChange(of: voice.pendingUtterance) { _, utterance in
             guard let utterance else { return }
-            Task {
-                controller.draft = utterance.text
-                let reply = await controller.send(in: conversation, context: context)
-                voice.deliverResponse(reply)
-            }
+            Task { await runVoiceTurn(utterance.text) }
+        }
+        // Voice never outlives the app being frontmost and unlocked: it
+        // would otherwise keep listening and reading replies aloud behind
+        // the lock screen, or sit stuck after a call cut its audio off.
+        .onChange(of: scenePhase) { _, phase in
+            if phase != .active { stopVoice() }
+        }
+        .onChange(of: lock.isLocked) { _, locked in
+            if locked { stopVoice() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: AVAudioSession.interruptionNotification)) { note in
+            let type = (note.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt)
+                .flatMap { AVAudioSession.InterruptionType(rawValue: $0) }
+            if type == .began { stopVoice() }
         }
         .navigationDestination(for: Article.self) { article in
             ArticleReaderView(article: article)
@@ -118,6 +131,9 @@ struct ConversationView: View {
                         .font(.title2)
                         .foregroundStyle(voice.isActive ? Color.accentColor : Color.primary)
                 }
+                // Not while a typed turn is still running: a spoken turn
+                // sent then would be dropped. Not without a key either.
+                .disabled(!voice.isActive && (controller.isRunning || missingKeyWarning != nil))
                 .accessibilityLabel(voice.isActive ? "Stop voice conversation" : "Start voice conversation")
                 Button {
                     Task { await controller.send(in: conversation, context: context) }
@@ -132,14 +148,14 @@ struct ConversationView: View {
         .padding(.horizontal)
         .padding(.vertical, 8)
         .background(.bar)
-        .alert("Turn on automatic approval?", isPresented: $showingVoiceGate) {
-            Button("Turn On & Start") {
+        .alert("Turn on automatic approval for all chats?", isPresented: $showingVoiceGate) {
+            Button("Turn On for All Chats") {
                 autoApprove = true
                 startVoice()
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("A voice conversation needs Settings → \"Approve fetches and new sources automatically\" turned on, so the strategist is never left waiting for a tap you can't make hands-free.")
+            Text("Voice conversations need \"Approve fetches and new sources automatically\", because nobody can tap an approval card hands-free. This lets the strategist read pages and follow sources without asking, in every chat, typed or spoken, until you turn it off in Settings → Strategist actions. Saving decisions to a project always still asks.")
         }
         .alert("Voice trouble", isPresented: Binding(get: { voice.errorMessage != nil },
                                                       set: { if !$0 { voice.errorMessage = nil } })) {
@@ -158,8 +174,13 @@ struct ConversationView: View {
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
             Spacer()
+            if voice.phase == .speaking {
+                Button("Skip") { voice.skipSpeaking() }
+                    .font(.caption)
+                    .buttonStyle(.borderless)
+                    .accessibilityHint("Stops reading this reply and listens again")
+            }
         }
-        .accessibilityElement(children: .combine)
     }
 
     private var voiceStatusText: String {
@@ -174,20 +195,48 @@ struct ConversationView: View {
     private func toggleVoice() {
         if voice.isActive {
             voice.stop()
-        } else if autoApprove {
-            startVoice()
-        } else {
+            return
+        }
+        switch VoiceTurn.startBlocker(hasKey: missingKeyWarning == nil, autoApprove: autoApprove) {
+        case .missingKey:
+            return  // the button is disabled; the banner above says why
+        case .needsAutoApprove:
             showingVoiceGate = true
+        case nil:
+            startVoice()
         }
     }
 
-    /// `record_strategy_item` (saving a decision/open item) always asks
-    /// regardless of this setting — a project-scoped voice conversation can
-    /// still stall on that one card. Not solved here: out of scope for what
-    /// auto-approve covers (PLAN §5.7, ActionTools.autoApprovableTools).
     private func startVoice() {
-        voice.config = VoiceSettings.current
+        var config = VoiceSettings.current
+        // Off the record means on-device only: never fall back to Apple's
+        // server recognition, and don't start where that's impossible.
+        config.requiresOnDeviceRecognition = conversation.offTheRecord
+        voice.config = config
         voice.start()
+    }
+
+    private func stopVoice() {
+        if voice.isActive { voice.stop() }
+    }
+
+    /// One spoken turn: send it, then speak the reply, listen again, or —
+    /// if it failed — say so and stop, rather than keep taking turns that
+    /// aren't getting through.
+    private func runVoiceTurn(_ text: String) async {
+        let reply = await controller.sendSpoken(text, in: conversation, context: context)
+        // Stopped meanwhile (you tapped the mic, or the app locked): say nothing.
+        guard voice.isActive else { return }
+        switch VoiceTurn.outcome(reply: reply, failed: controller.errorMessage != nil) {
+        case .speak(let spoken):
+            voice.deliverResponse(spoken)
+        case .listen:
+            voice.deliverResponse(nil)
+        case .fail(let message):
+            let config = voice.config
+            voice.stop()
+            SpeechService.shared.speak(message, rate: config.ttsRate, pitch: config.ttsPitch, voiceID: config.voiceID)
+        }
     }
 }
 

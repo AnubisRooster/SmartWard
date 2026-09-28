@@ -31,19 +31,34 @@ final class ChatController {
         self.llm = llm
     }
 
+    /// Sends the typed draft.
     /// - Returns: the assistant's reply text, or `nil` if the turn produced
-    ///   none (an error, or a tool-only round) — voice mode speaks this;
-    ///   the text composer ignores it.
+    ///   none (an error, or a tool-only round).
     @discardableResult
     func send(in conversation: Conversation, context: ModelContext) async -> String? {
-        let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        await run(draft.trimmingCharacters(in: .whitespacesAndNewlines), in: conversation, context: context,
+                  handsFree: false, fromDraft: true)
+    }
+
+    /// Sends a spoken turn. Leaves the typed draft alone. Hands-free there's
+    /// nobody to tap an approval card, so tools that would need one aren't
+    /// offered, and any action that isn't auto-approved is declined rather
+    /// than left waiting.
+    @discardableResult
+    func sendSpoken(_ text: String, in conversation: Conversation, context: ModelContext) async -> String? {
+        await run(text.trimmingCharacters(in: .whitespacesAndNewlines), in: conversation, context: context,
+                  handsFree: true, fromDraft: false)
+    }
+
+    private func run(_ text: String, in conversation: Conversation, context: ModelContext,
+                     handsFree: Bool, fromDraft: Bool) async -> String? {
         guard !text.isEmpty, !isRunning else { return nil }
         guard let provider = LLMProvider(rawValue: conversation.provider) else {
             errorMessage = "This chat's provider '\(conversation.provider)' isn't available. Start a new chat."
             return nil
         }
 
-        draft = ""
+        if fromDraft { draft = "" }
         errorMessage = nil
         streamingText = ""
         activity = []
@@ -76,7 +91,11 @@ final class ChatController {
                                                            context: context)
         let references = ledger.register(found)
         system += "\n\n" + ReferenceContext.guidance
-        let allowed = StrategistPrompt.allowedTools(for: conversation.mode)
+        var allowed = StrategistPrompt.allowedTools(for: conversation.mode)
+        if handsFree {
+            allowed = ActionTools.handsFreeTools(allowed, autoApprove: autoApproveEnabled)
+            system += "\n\n" + VoiceTurn.promptNote
+        }
         if !allowed.isDisjoint(with: ["fetch_url", "add_source"]) {
             system += "\n\n" + ActionTools.guidance
         }
@@ -114,8 +133,11 @@ final class ChatController {
         let runner = StrategistRunner(llm: client)
         do {
             let produced = try await runner.run(request: request, tools: tools,
-                                                confirm: { action in await self.requestApproval(action) }) { event in
-                self.handle(event, provider: provider, conversation: conversation, context: context)
+                                                confirm: { action in
+                                                    await self.requestApproval(action, handsFree: handsFree)
+                                                }) { event in
+                self.handle(event, provider: provider, conversation: conversation, context: context,
+                            handsFree: handsFree)
             }
             let reply = produced
                 .filter { $0.role == .assistant }
@@ -148,21 +170,31 @@ final class ChatController {
         approval.resume(returning: approved)
     }
 
-    private func requestApproval(_ action: ActionRequest) async -> Bool {
-        if declinesActions { return false }
-        if isAutoApproved(action.tool) { return true }
-        resolve(approved: false)
-        return await withCheckedContinuation { continuation in
-            approval = continuation
-            pendingAction = action
+    private func requestApproval(_ action: ActionRequest, handsFree: Bool) async -> Bool {
+        switch ActionTools.decision(for: action.tool, autoApprove: autoApproveEnabled,
+                                    handsFree: handsFree, declinesAll: declinesActions) {
+        case .approve:
+            return true
+        case .decline:
+            return false
+        case .ask:
+            resolve(approved: false)
+            return await withCheckedContinuation { continuation in
+                approval = continuation
+                pendingAction = action
+            }
         }
     }
 
     /// Settings → "Approve fetches and new sources automatically." Never
     /// covers record_strategy_item: that changes what the project
     /// remembers, not just what the strategist reads.
+    private var autoApproveEnabled: Bool {
+        UserDefaults.standard.bool(forKey: ActionTools.autoApproveKey)
+    }
+
     private func isAutoApproved(_ tool: String) -> Bool {
-        UserDefaults.standard.bool(forKey: ActionTools.autoApproveKey) && ActionTools.autoApprovableTools.contains(tool)
+        autoApproveEnabled && ActionTools.autoApprovableTools.contains(tool)
     }
 
     /// What a reply was given, for its Sources list: text is trimmed to a teaser.
@@ -178,7 +210,7 @@ final class ChatController {
     }
 
     private func handle(_ event: StrategistEvent, provider: LLMProvider,
-                        conversation: Conversation, context: ModelContext) {
+                        conversation: Conversation, context: ModelContext, handsFree: Bool) {
         switch event {
         case .textDelta(let text):
             streamingText += text
@@ -187,12 +219,14 @@ final class ChatController {
         case .awaitingConfirmation(let action):
             if isAutoApproved(action.tool) {
                 activity.append("Auto-approved: \(action.title) (\(action.detail))")
+            } else if handsFree {
+                activity.append("Skipped in a voice conversation: \(action.title) (\(action.detail))")
             } else {
                 activity.append("Asking you: \(action.title)")
             }
         case .confirmationResolved(let action, let approved):
-            // The auto-approved case already logged itself above.
-            if !isAutoApproved(action.tool) {
+            // The auto-approved and hands-free cases already logged themselves above.
+            if !isAutoApproved(action.tool) && !handsFree {
                 activity.append("\(approved ? "Approved" : "Declined"): \(action.title) (\(action.detail))")
             }
         case .toolResult(let name, let result, let isError):

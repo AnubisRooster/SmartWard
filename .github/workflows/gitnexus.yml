@@ -176,7 +176,7 @@ jobs:
           EXISTING=$(gh api "repos/${{ github.repository }}/issues/$PR_NUMBER/comments" \
             --jq '.[] | select(.body | startswith("<!-- gitnexus-impact -->")) | .id' | head -1 || true)
           if [ -n "$EXISTING" ]; then
-            gh api -X PATCH "repos/${{ github.repository }}/issues/$PR_NUMBER/comments/$EXISTING" -F body=@pr-comment.md
+            gh api -X PATCH "repos/${{ github.repository }}/issues/comments/$EXISTING" -F body=@pr-comment.md
           else
             gh pr comment "$PR_NUMBER" --body-file pr-comment.md
           fi
