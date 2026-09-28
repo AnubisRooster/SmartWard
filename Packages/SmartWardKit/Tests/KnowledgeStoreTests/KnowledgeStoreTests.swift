@@ -157,6 +157,26 @@ final class ContextPolicyTests: XCTestCase {
         conversation.offTheRecord = true
         XCTAssertFalse(ContextPolicy.mayExtractWithBYOK(conversation))
     }
+
+    @MainActor
+    func testOffTheRecordTurnsNeverLeaveTheDevice() throws {
+        let (container, context) = try makeContext()
+        defer { _ = container }
+        let conversation = Conversation(title: "t")
+        context.insert(conversation)
+        let turn = Message(role: "user", content: "our plan")
+        conversation.messages?.append(turn)
+        let chunk = Chunk(text: "our plan")
+        turn.chunks?.append(chunk)
+        try context.save()
+        XCTAssertTrue(ContextPolicy.mayLeaveDevice(chunk))
+        XCTAssertTrue(ContextPolicy.messageMayLeaveDevice(turn))
+
+        // Even a chunk indexed before it was marked local-only.
+        conversation.offTheRecord = true
+        XCTAssertFalse(ContextPolicy.mayLeaveDevice(chunk))
+        XCTAssertFalse(ContextPolicy.messageMayLeaveDevice(turn))
+    }
 }
 
 final class ThemeStrengthTests: XCTestCase {

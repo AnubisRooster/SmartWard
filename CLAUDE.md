@@ -19,9 +19,10 @@ Local-first iOS research strategist. The source of truth for requirements, desig
 
 ## Invariants — do not break
 
-- **Private content never goes to a BYOK provider (D5).** Anything that assembles provider context or runs BYOK extraction must filter through `ContextPolicy`. Private-repo articles and chunks carry `localOnly = true`, and there is no user override.
+- **Private content never goes to a BYOK provider (D5).** Anything that assembles provider context or runs BYOK extraction must filter through `ContextPolicy`. Private-repo articles and chunks carry `localOnly = true`, and there is no user override. Off-the-record chats count as private for everything but the chat itself: `ContextPolicy.mayLeaveDevice` checks the chunk's conversation, and `GraphIndexer` marks their turn chunks `localOnly`, so they're never quoted into another chat.
 - **The schema stays CloudKit-compatible** (PLAN §4). No `@Attribute(.unique)`. Every stored property has a default or is optional. Every relationship is optional, with its inverse declared on exactly one side. Every new `@Model` must be added to `KnowledgeSchema.models`.
 - **Graph strength and weight are derived**, not stored counters: `Mention` and `ThemeEdge` rows are append-only, and `ThemeStrength` computes strength from them.
+- The lock screen and the app-switcher privacy cover live in `LockWindow`, a window above every presentation. Don't move them back into a view overlay: sheets and full-screen covers draw above overlays.
 - API keys and tokens live only in the Keychain, never in `UserDefaults`, SwiftData or backups.
 - SmartWard never writes to GitHub. `GitHubClient` issues GET requests only; the two device-flow auth calls to github.com are the only exceptions. Only docs and manifests are synced, never source code. A private repo's articles are always `localOnly`.
 - Every ingestion request goes through `PolitenessGate` (truthful User-Agent, per-host rate limit, backoff; robots.txt for web pages), and all fetched HTML goes through `ArticleExtractor`, which drops hidden text, comments and invisible characters before anything is stored. Articles are deduped by `CanonicalURL` and content hash across all sources.

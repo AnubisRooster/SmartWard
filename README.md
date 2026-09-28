@@ -59,7 +59,7 @@ The Today tab gathers articles linked since the last digest into theme clusters.
 
 ### Privacy and security
 
-Private-repo content and off-the-record chats never leave the device, whichever provider you've pointed the strategist at, and SmartWard never writes back to GitHub — repo links are read-only. App lock covers the whole app with Face ID/Touch ID and a PIN fallback, locking on launch and after a background grace period, with a privacy cover in the app switcher.
+Private-repo content never leaves the device, whichever provider you've pointed the strategist at, and SmartWard never writes back to GitHub — repo links are read-only. A chat you start off the record still talks to your provider, but its turns are added to the knowledge graph on-device only and are never quoted into other chats. App lock covers the whole app, including any sheet left open, with Face ID/Touch ID and a PIN fallback, locking on launch and after a background grace period, with a privacy cover in the app switcher.
 
 ### Export and backup
 
