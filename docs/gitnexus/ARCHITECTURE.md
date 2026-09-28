@@ -6,19 +6,19 @@ _Auto-generated from the GitNexus knowledge graph on every push to `main`. Do no
 
 | nodes | edges |
 | ----- | ----- |
-| 5743 | 25278 |
+| 5832 | 26454 |
 
 ## God nodes (highest out-degree, tests excluded)
 
 | symbol | file | outDegree |
 | --- | --- | --- |
-| DigestBuilder.swift | Packages/SmartWardKit/Sources/Pipeline/DigestBuilder.swift | 180 |
-| HybridSearch.swift | Packages/SmartWardKit/Sources/Pipeline/HybridSearch.swift | 179 |
-| GraphEditing.swift | Packages/SmartWardKit/Sources/Pipeline/GraphEditing.swift | 177 |
+| DigestBuilder.swift | Packages/SmartWardKit/Sources/Pipeline/DigestBuilder.swift | 184 |
+| HybridSearch.swift | Packages/SmartWardKit/Sources/Pipeline/HybridSearch.swift | 183 |
+| GraphEditing.swift | Packages/SmartWardKit/Sources/Pipeline/GraphEditing.swift | 181 |
+| LibraryArchive.swift | Packages/SmartWardKit/Sources/KnowledgeStore/LibraryArchive.swift | 161 |
+| Onboarding.swift | Packages/SmartWardKit/Sources/StrategistCore/Onboarding.swift | 161 |
+| BriefService.swift | Packages/SmartWardKit/Sources/StrategistCore/BriefService.swift | 160 |
+| SampleLibrary.swift | Packages/SmartWardKit/Sources/Pipeline/SampleLibrary.swift | 160 |
 | restore | Packages/SmartWardKit/Sources/KnowledgeStore/LibraryRestore.swift | 160 |
-| Onboarding.swift | Packages/SmartWardKit/Sources/StrategistCore/Onboarding.swift | 157 |
-| LibraryArchive.swift | Packages/SmartWardKit/Sources/KnowledgeStore/LibraryArchive.swift | 157 |
-| BriefService.swift | Packages/SmartWardKit/Sources/StrategistCore/BriefService.swift | 156 |
-| SampleLibrary.swift | Packages/SmartWardKit/Sources/Pipeline/SampleLibrary.swift | 156 |
-| GraphRetrieval.swift | Packages/SmartWardKit/Sources/Pipeline/GraphRetrieval.swift | 155 |
-| ResearchTools.swift | Packages/SmartWardKit/Sources/Pipeline/ResearchTools.swift | 154 |
+| GraphRetrieval.swift | Packages/SmartWardKit/Sources/Pipeline/GraphRetrieval.swift | 159 |
+| Extraction.swift | Packages/SmartWardKit/Sources/Pipeline/Extraction.swift | 158 |
