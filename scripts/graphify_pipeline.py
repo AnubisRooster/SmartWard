@@ -20,7 +20,9 @@ Run it with:  python scripts/graphify_pipeline.py
 """
 import json
 import os
+import re
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(os.environ.get("GRAPHIFY_ROOT", Path.cwd())).resolve()
@@ -231,6 +233,18 @@ def main() -> int:
         suggested_questions=questions,
     )
     (OUT / "GRAPH_REPORT.md").write_text(report, encoding="utf-8")
+    # The report header stamps the local date, so a local run and a CI run can
+    # disagree by a day depending on the timezone and leave a date-only diff
+    # that has nothing to do with the code. CI is UTC; pin the header to UTC so
+    # both sides produce the same report for the same tree.
+    rp = OUT / "GRAPH_REPORT.md"
+    text = rp.read_text(encoding="utf-8")
+    utc_today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    patched = re.sub(
+        r"^(#\s*Graph Report\b.*?)\(\d{4}-\d{2}-\d{2}\)", rf"\g<1>({utc_today})", text, count=1
+    )
+    if patched != text:
+        rp.write_text(patched, encoding="utf-8")
     (OUT / ".graphify_labels.json").write_text(
         json.dumps({str(k): v for k, v in labels.items()}, ensure_ascii=False), encoding="utf-8"
     )
