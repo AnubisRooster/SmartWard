@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 import BackgroundTasks
 import SwiftData
 import IngestKit
@@ -19,6 +20,12 @@ enum BackgroundWork {
     static let processingBudget: TimeInterval = 10 * 60
     static let continuedBudget: TimeInterval = 5 * 60
 
+    /// Settings → how soon the *next* background refresh request's
+    /// `earliestBeginDate` is. iOS still decides the actual time from its
+    /// own budget (battery, usage patterns): this only nudges the earliest
+    /// it's allowed to run, never a guaranteed cadence.
+    static let refreshEagernessKey = "background.refreshEagerness"
+
     static func registerHandlers() {
         _ = BGTaskScheduler.shared.register(forTaskWithIdentifier: processingID, using: nil) { task in
             guard let task = task as? BGProcessingTask else {
@@ -37,7 +44,7 @@ enum BackgroundWork {
     /// goes to the background and after each refresh.
     static func schedule() {
         let refresh = BGAppRefreshTaskRequest(identifier: refreshID)
-        refresh.earliestBeginDate = Date(timeIntervalSinceNow: 60 * 60)
+        refresh.earliestBeginDate = Date(timeIntervalSinceNow: RefreshEagerness.current.interval)
         try? BGTaskScheduler.shared.submit(refresh)
 
         let processing = BGProcessingTaskRequest(identifier: processingID)
@@ -104,6 +111,72 @@ enum BackgroundWork {
         await PipelineController.shared.process(context: context, budget: continuedBudget)
         task.progress.completedUnitCount = 2
         task.setTaskCompleted(success: !Task.isCancelled)
+    }
+}
+
+/// How soon background refresh may next run — a nudge to iOS, not a
+/// schedule it honors exactly.
+enum RefreshEagerness: String, CaseIterable, Identifiable {
+    case relaxed, normal, frequent
+    var id: Self { self }
+
+    var interval: TimeInterval {
+        switch self {
+        case .relaxed: return 4 * 60 * 60
+        case .normal: return 60 * 60
+        case .frequent: return 15 * 60
+        }
+    }
+
+    var label: String {
+        switch self {
+        case .relaxed: return "Less often"
+        case .normal: return "Normal"
+        case .frequent: return "More often"
+        }
+    }
+
+    static var current: RefreshEagerness {
+        RefreshEagerness(rawValue: UserDefaults.standard.string(forKey: BackgroundWork.refreshEagernessKey) ?? "")
+            ?? .normal
+    }
+}
+
+/// Settings → Reading: how soon the next background refresh is allowed to
+/// run, and a manual trigger for right now.
+struct BackgroundRefreshSettingsSection: View {
+    @AppStorage(BackgroundWork.refreshEagernessKey) private var eagernessRaw = RefreshEagerness.normal.rawValue
+    @Environment(\.modelContext) private var context
+    @State private var ingest = IngestController.shared
+    @State private var pipeline = PipelineController.shared
+
+    private var eagerness: Binding<RefreshEagerness> {
+        Binding(get: { RefreshEagerness(rawValue: eagernessRaw) ?? .normal },
+               set: { eagernessRaw = $0.rawValue })
+    }
+
+    private var isRefreshing: Bool { ingest.isRefreshing || pipeline.isRunning }
+
+    var body: some View {
+        Section {
+            Picker("Check for updates", selection: eagerness) {
+                ForEach(RefreshEagerness.allCases) { Text($0.label).tag($0) }
+            }
+            Button {
+                BackgroundWork.startContinuedRefresh(context: context)
+            } label: {
+                HStack {
+                    Text("Refresh now")
+                    Spacer()
+                    if isRefreshing { ProgressView() }
+                }
+            }
+            .disabled(isRefreshing)
+        } header: {
+            Text("Background refresh")
+        } footer: {
+            Text("iOS decides the actual time from its own budget — battery, how often you open SmartWard — so this only changes how soon the next refresh is allowed to run, not a fixed schedule. Refresh now always fetches immediately, in the background if you leave the app.")
+        }
     }
 }
 
