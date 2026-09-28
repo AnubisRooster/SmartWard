@@ -47,4 +47,16 @@ final class VoiceTurnTests: XCTestCase {
         let spoken = VoiceTurn.spokenText(reply)
         XCTAssertTrue(spoken.hasSuffix("word The rest is on screen."), spoken)
     }
+
+    func testRepliesAreCleanedBeforeTheyreShortened() {
+        let code = "```swift\n" + String(repeating: "let x = 1\n", count: 200) + "```\n"
+        let reply = code + "Use the second option [R1]. It's cheaper."
+        let dropCode = { (text: String) in
+            text.replacingOccurrences(of: #"(?s)```.*?```"#, with: "", options: .regularExpression)
+        }
+        XCTAssertEqual(VoiceTurn.outcome(reply: reply, failed: false, clean: dropCode),
+                       .speak("Use the second option. It's cheaper."),
+                       "a long code block doesn't use up the spoken length or get cut open")
+        XCTAssertEqual(VoiceTurn.outcome(reply: "```\ncode only\n```", failed: false, clean: dropCode), .listen)
+    }
 }

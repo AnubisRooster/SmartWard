@@ -5,12 +5,37 @@ public protocol HTTPTransport: Sendable {
     func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse)
 }
 
+/// Every request goes through `RedirectPolicy`, so a public page can't
+/// redirect it to this device or its local network, and stops reading at
+/// `maxBytes`, so a huge or endless response can't exhaust memory.
 public struct URLSessionTransport: HTTPTransport {
-    public init() {}
+    public static let defaultMaxBytes = 16 * 1024 * 1024
+
+    public let maxBytes: Int
+
+    public init(maxBytes: Int = defaultMaxBytes) {
+        self.maxBytes = maxBytes
+    }
 
     public func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
-        let (data, response) = try await URLSession.shared.data(for: request)
-        guard let http = response as? HTTPURLResponse else { throw GitHubError.invalidResponse }
+        let (bytes, response) = try await URLSession.shared.bytes(for: request, delegate: RedirectPolicy.shared)
+        guard let http = response as? HTTPURLResponse else {
+            bytes.task.cancel()
+            throw GitHubError.invalidResponse
+        }
+        guard http.expectedContentLength <= Int64(maxBytes) else {
+            bytes.task.cancel()
+            throw IngestError.tooLarge
+        }
+        var data = Data()
+        if http.expectedContentLength > 0 { data.reserveCapacity(Int(http.expectedContentLength)) }
+        for try await byte in bytes {
+            data.append(byte)
+            if data.count > maxBytes {
+                bytes.task.cancel()
+                throw IngestError.tooLarge
+            }
+        }
         return (data, http)
     }
 }

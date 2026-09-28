@@ -4,6 +4,7 @@ import FoundationModels
 import BYOKLLMKit
 import ModelCatalogKit
 import KnowledgeStore
+import Pipeline
 import StrategistCore
 
 /// First-launch setup (PLAN flow D): preflight, a short strategist-led
@@ -234,7 +235,7 @@ struct OnboardingView: View {
 
     private func apply(_ proposal: OnboardingProposal) {
         do {
-            try proposal.apply(to: context)
+            try SourceIntake.checked(proposal, context: context).apply(to: context)
             completed = true
             // Kick-off (PLAN §3.3 D7): the first fetch of the confirmed sources.
             let context = context

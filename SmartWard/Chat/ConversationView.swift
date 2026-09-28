@@ -213,11 +213,25 @@ struct ConversationView: View {
         // server recognition, and don't start where that's impossible.
         config.requiresOnDeviceRecognition = conversation.offTheRecord
         voice.config = config
+        // A failure message still being read would be heard by the mic.
+        SpeechService.shared.stop()
         voice.start()
     }
 
     private func stopVoice() {
-        if voice.isActive { voice.stop() }
+        if voice.isActive {
+            voice.stop()
+        } else if SpeechService.shared.isSpeaking {
+            // The failure message, spoken after the loop already stopped.
+            SpeechService.shared.stop()
+            Self.releaseAudio()
+        }
+    }
+
+    /// Gives the audio session back, so other apps' audio isn't left ducked
+    /// by speech the voice loop didn't manage.
+    nonisolated private static func releaseAudio() {
+        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
     }
 
     /// One spoken turn: send it, then speak the reply, listen again, or —
@@ -227,7 +241,8 @@ struct ConversationView: View {
         let reply = await controller.sendSpoken(text, in: conversation, context: context)
         // Stopped meanwhile (you tapped the mic, or the app locked): say nothing.
         guard voice.isActive else { return }
-        switch VoiceTurn.outcome(reply: reply, failed: controller.errorMessage != nil) {
+        switch VoiceTurn.outcome(reply: reply, failed: controller.errorMessage != nil,
+                                 clean: SpeechService.speakableText) {
         case .speak(let spoken):
             voice.deliverResponse(spoken)
         case .listen:
@@ -235,7 +250,8 @@ struct ConversationView: View {
         case .fail(let message):
             let config = voice.config
             voice.stop()
-            SpeechService.shared.speak(message, rate: config.ttsRate, pitch: config.ttsPitch, voiceID: config.voiceID)
+            SpeechService.shared.speak(message, rate: config.ttsRate, pitch: config.ttsPitch, voiceID: config.voiceID,
+                                       onFinish: { Self.releaseAudio() })
         }
     }
 }

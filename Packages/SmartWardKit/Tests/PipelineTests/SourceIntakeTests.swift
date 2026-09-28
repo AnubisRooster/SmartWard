@@ -1,6 +1,7 @@
 import XCTest
 import SwiftData
 import KnowledgeStore
+import StrategistCore
 @testable import Pipeline
 
 final class SourceIntakeTests: XCTestCase {
@@ -32,5 +33,30 @@ final class SourceIntakeTests: XCTestCase {
             return XCTFail("local addresses are refused")
         }
         XCTAssertEqual(try SourceIntake.plan(kind: .arxiv, address: "cs.CL", title: "NLP", context: context).title, "NLP")
+    }
+
+    @MainActor
+    func testOnboardingSourcesGetTheSameValidation() throws {
+        let container = try KnowledgeSchema.makeContainer(inMemory: true)
+        let context = container.mainContext
+        context.insert(Source(kind: "rss", url: "https://followed.example/feed.xml", title: "Followed"))
+        try context.save()
+
+        let proposal = OnboardingProposal(
+            projects: [],
+            sources: [
+                .init(kind: "rss", url: " example.com/feed.xml ", title: "Example"),
+                .init(kind: "site", url: "http://192.168.1.1/admin", title: "Router"),
+                .init(kind: "rss", url: "https://followed.example/feed.xml", title: "Again"),
+                .init(kind: "github_repo", url: "me/app", title: "Not a feed"),
+                .init(kind: "arxiv", url: "cs.CL", title: "NLP"),
+            ],
+            interestStatement: "", topics: [], mutedTopics: [])
+        let checked = SourceIntake.checked(proposal, context: context)
+        XCTAssertEqual(checked.sources, [
+            .init(kind: "rss", url: "https://example.com/feed.xml", title: "Example"),
+            .init(kind: "arxiv", url: try SourceIntake.plan(kind: .arxiv, address: "cs.CL", title: "NLP", context: context).url,
+                  title: "NLP"),
+        ], "normalized, and local, repeated or unsupported ones dropped")
     }
 }

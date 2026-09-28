@@ -156,9 +156,8 @@ struct BackupView: View {
             return
         }
         do {
-            try LibraryArchive.erase(context)
-            try archive.restore(into: context)
-            try context.save()
+            // One save: a failed restore leaves your current library as it was.
+            try archive.replaceLibrary(in: context)
             message = "Restored \(archive.projects.count) projects, \(archive.articles.count) articles and \(archive.conversations.count) chats."
         } catch {
             message = "Restore failed: \(error.localizedDescription)"

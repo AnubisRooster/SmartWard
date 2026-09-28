@@ -20,7 +20,8 @@ final class GraphEditingTests: XCTestCase {
         let article = Article(canonicalURL: "https://x.example/1", title: "A", cleanedText: "Llama three and Llama 3")
         context.insert(article)
         let chunk = KnowledgeStore.Chunk(text: "Llama three and Llama 3 and vLLM")
-        article.chunks?.append(chunk)
+        let onlyDup = KnowledgeStore.Chunk(text: "Llama three alone", ordinal: 1)
+        article.chunks?.append(contentsOf: [chunk, onlyDup])
 
         let dup = ThemeNode(type: "model", canonicalLabel: "Llama three")
         let llama = ThemeNode(type: "model", canonicalLabel: "Llama 3")
@@ -28,6 +29,7 @@ final class GraphEditingTests: XCTestCase {
         for node in [dup, llama, vllm] { context.insert(node) }
         dup.aliases?.append(EntityAlias(alias: "llama-three", origin: "auto"))
         mention(dup, in: chunk, at: now)
+        mention(dup, in: onlyDup, at: now)
         mention(llama, in: chunk, at: now)
         mention(vllm, in: chunk, at: now)
         context.insert(ThemeEdge(sourceNodeID: vllm.id, targetNodeID: dup.id, type: "USES", evidenceChunkID: chunk.id))
@@ -44,7 +46,10 @@ final class GraphEditingTests: XCTestCase {
         try context.save()
 
         XCTAssertEqual(try context.fetchCount(FetchDescriptor<ThemeNode>()), 2)
-        XCTAssertEqual(llama.mentions?.count, 2, "the duplicate's mention moved")
+        XCTAssertEqual(llama.mentions?.count, 2,
+                       "the duplicate's mention moved; in the chunk naming both, the survivor keeps one, not two")
+        XCTAssertEqual(Set((llama.mentions ?? []).compactMap { $0.chunk?.id }), [chunk.id, onlyDup.id])
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<Mention>()), 3, "llama ×2 and vLLM")
         let edges = try context.fetch(FetchDescriptor<ThemeEdge>())
         XCTAssertEqual(edges.count, 1, "the edge between the two became a self-loop and was dropped")
         XCTAssertEqual(edges.first?.targetNodeID, llama.id)
@@ -74,10 +79,22 @@ final class GraphEditingTests: XCTestCase {
         gpt.aliases?.append(alias)
         mention(gpt, in: onlyMini, at: now)
         mention(gpt, in: both, at: now)
+        let openAI = ThemeNode(type: "org", canonicalLabel: "OpenAI")
+        context.insert(openAI)
+        let miniRelation = ThemeEdge(sourceNodeID: gpt.id, targetNodeID: openAI.id, type: "RELEASED_BY",
+                                     evidenceChunkID: onlyMini.id)
+        let gptRelation = ThemeEdge(sourceNodeID: gpt.id, targetNodeID: openAI.id, type: "RELEASED_BY",
+                                    evidenceChunkID: both.id)
+        context.insert(miniRelation)
+        context.insert(gptRelation)
         try context.save()
 
         let mini = GraphEditing.split(alias, from: gpt, context: context)
         try context.save()
+
+        XCTAssertEqual(miniRelation.sourceNodeID, mini.id, "a relation stated where only the alias appears moves with it")
+        XCTAssertEqual(gptRelation.sourceNodeID, gpt.id)
+        XCTAssertEqual(miniRelation.targetNodeID, openAI.id)
 
         XCTAssertEqual(mini.canonicalLabel, "gpt-4o mini")
         XCTAssertEqual(mini.mentions?.count, 1, "only the chunk that names just the alias moves")
