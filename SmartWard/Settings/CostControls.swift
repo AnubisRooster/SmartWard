@@ -88,10 +88,10 @@ final class ModelCatalogController {
     }
 
     /// `LLMService.shared`, retrying on fallback models when the chosen one
-    /// is rate-limited or down.
-    func fallbackLLM() -> FallbackLLM {
+    /// is rate-limited or down. Qualified: BYOKLLMKit has a `FallbackLLM` too.
+    func fallbackLLM() -> StrategistCore.FallbackLLM {
         let fallback = self.fallback
-        return FallbackLLM(base: LLMService.shared) { fallback.alternatives(for: $0) }
+        return StrategistCore.FallbackLLM(base: LLMService.shared) { fallback.alternatives(for: $0) }
     }
 }
 

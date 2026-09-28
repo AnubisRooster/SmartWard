@@ -51,20 +51,21 @@ final class FlakyLLM: LLMCompleting, @unchecked Sendable {
     }
 }
 
+/// `FallbackLLM` is qualified throughout: BYOKLLMKit has one too.
 final class FallbackLLMTests: XCTestCase {
     private let request = LLMRequest(provider: .openrouter, model: "a", messages: [.user("hi")])
     private let busy = LLMCompletionError.http(status: 429, body: "rate limited")
 
     func testRotatesOnRateLimitsAndServerErrorsOnly() async throws {
         let flaky = FlakyLLM(["a": .fail(busy), "b": .fail(.http(status: 503, body: "")), "c": .ok])
-        let llm = FallbackLLM(base: flaky) { _ in ["b", "a", "c", "d"] }
+        let llm = StrategistCore.FallbackLLM(base: flaky) { _ in ["b", "a", "c", "d"] }
         let response = try await llm.complete(request)
         XCTAssertEqual(response.model, "c")
         XCTAssertEqual(flaky.tried, ["a", "b", "c"], "no repeats")
 
         let badRequest = FlakyLLM(["a": .fail(.http(status: 400, body: "bad"))])
         do {
-            _ = try await FallbackLLM(base: badRequest) { _ in ["b"] }.complete(request)
+            _ = try await StrategistCore.FallbackLLM(base: badRequest) { _ in ["b"] }.complete(request)
             XCTFail("a bad request isn't retried elsewhere")
         } catch {
             XCTAssertEqual(error as? LLMCompletionError, .http(status: 400, body: "bad"))
@@ -72,7 +73,7 @@ final class FallbackLLMTests: XCTestCase {
         XCTAssertEqual(badRequest.tried, ["a"])
 
         let allBusy = FlakyLLM(["a": .fail(busy), "b": .fail(busy), "c": .fail(busy)])
-        var limited = FallbackLLM(base: allBusy) { _ in ["b", "c"] }
+        var limited = StrategistCore.FallbackLLM(base: allBusy) { _ in ["b", "c"] }
         limited.maxAttempts = 2
         do {
             _ = try await limited.complete(request)
@@ -86,7 +87,7 @@ final class FallbackLLMTests: XCTestCase {
     func testStreamsRotateOnlyBeforeAnyOutput() async throws {
         let flaky = FlakyLLM(["a": .fail(busy), "b": .ok])
         var events: [LLMStreamEvent] = []
-        for try await event in FallbackLLM(base: flaky, alternatives: { _ in ["b"] }).stream(request) {
+        for try await event in StrategistCore.FallbackLLM(base: flaky, alternatives: { _ in ["b"] }).stream(request) {
             events.append(event)
         }
         XCTAssertEqual(events.first, .textDelta("from b"))
@@ -95,7 +96,7 @@ final class FallbackLLMTests: XCTestCase {
         let midway = FlakyLLM(["a": .failMidStream(busy)])
         var partial: [LLMStreamEvent] = []
         do {
-            for try await event in FallbackLLM(base: midway, alternatives: { _ in ["b"] }).stream(request) {
+            for try await event in StrategistCore.FallbackLLM(base: midway, alternatives: { _ in ["b"] }).stream(request) {
                 partial.append(event)
             }
             XCTFail("an interrupted reply isn't restarted on another model")
