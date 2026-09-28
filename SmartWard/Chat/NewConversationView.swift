@@ -14,6 +14,7 @@ struct NewConversationView: View {
     @AppStorage("chat.lastModel") private var model = LLMProvider.openrouter.exampleModelID
     @State private var mode: ConversationMode = .brainstorm
     @State private var projectID: UUID?
+    @State private var offTheRecord = false
 
     private var providersWithKeys: [LLMProvider] {
         LLMProvider.allCases.filter { LLMKeychainStore.shared.hasKey(for: $0) }
@@ -51,6 +52,11 @@ struct NewConversationView: View {
                         }
                     }
                 }
+                Section {
+                    Toggle("Off the record", isOn: $offTheRecord)
+                } footer: {
+                    Text("The chat itself still goes to your provider, but it's added to your knowledge graph on-device only, never quoted into other chats, and voice is transcribed on-device.")
+                }
             }
             .navigationTitle("New chat")
             .toolbar {
@@ -84,6 +90,7 @@ struct NewConversationView: View {
         let conversation = Conversation(title: "", mode: mode)
         conversation.provider = providerRaw
         conversation.model = model.trimmingCharacters(in: .whitespacesAndNewlines)
+        conversation.offTheRecord = offTheRecord
         context.insert(conversation)
         if let projectID, let project = projects.first(where: { $0.id == projectID }) {
             project.conversations?.append(conversation)

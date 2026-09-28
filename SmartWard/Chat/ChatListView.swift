@@ -63,6 +63,7 @@ struct ChatListView: View {
         var parts = [modeLabel(conversation.mode)]
         if let project = conversation.project { parts.append(project.name) }
         parts.append(conversation.model)
+        if conversation.offTheRecord { parts.append("Off the record") }
         return parts.joined(separator: " · ")
     }
 }

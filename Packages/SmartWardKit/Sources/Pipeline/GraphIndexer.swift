@@ -162,9 +162,11 @@ public final class GraphIndexer {
 
         let pieces = chunker.chunk(RetrievalKit.Document(id: message.id.uuidString, text: message.content))
         let vectors = await embedder.provider.embed(batch: pieces.map(\.text))
+        // Off-the-record turns stay local-only down to the chunk (D5).
+        let localOnly = message.conversation?.offTheRecord ?? false
         var chunks: [KnowledgeStore.Chunk] = []
         for (ordinal, piece) in pieces.enumerated() {
-            let chunk = KnowledgeStore.Chunk(text: piece.text, ordinal: ordinal)
+            let chunk = KnowledgeStore.Chunk(text: piece.text, ordinal: ordinal, localOnly: localOnly)
             if ordinal < vectors.count, let vector = vectors[ordinal] {
                 chunk.vector = VectorCoding.data(from: vector)
                 chunk.embeddingModel = embedder.id

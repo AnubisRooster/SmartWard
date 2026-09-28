@@ -31,15 +31,15 @@ struct RootView: View {
                                               set: { onboardingCompleted = !$0 })) {
             OnboardingView()
         }
-        .overlay {
-            if lock.isLocked {
-                LockScreen()
-            } else if lock.isObscured {
-                PrivacyCover()
-            }
+        // In its own window, so it covers sheets and full-screen covers too.
+        .onChange(of: [lock.isLocked, lock.isObscured]) { _, state in
+            LockWindow.update(isLocked: state[0], isObscured: state[1])
         }
         .onChange(of: scenePhase, initial: true) { _, phase in
             lock.handle(phase)
+            // Right away, not on the next view update: the app-switcher
+            // snapshot is taken as the app leaves the foreground.
+            LockWindow.update(isLocked: lock.isLocked, isObscured: lock.isObscured)
             switch phase {
             case .active:
                 Task { await ModelCatalogController.shared.load() }

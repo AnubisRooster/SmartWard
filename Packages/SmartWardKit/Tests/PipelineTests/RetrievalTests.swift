@@ -35,7 +35,8 @@ final class RetrievalFixture {
         return article
     }
 
-    init() async throws {
+    /// - Parameter offTheRecord: whether the "Serving plan" chat is off the record.
+    init(offTheRecord: Bool = false) async throws {
         let now = Date(timeIntervalSince1970: 1_800_000_000)
         let container = try KnowledgeSchema.makeContainer(inMemory: true)
         let context = container.mainContext
@@ -49,6 +50,7 @@ final class RetrievalFixture {
         _ = Self.add(context, "https://x.example/bread", "Sourdough", "Bread baking at home.")
 
         let conversation = Conversation(title: "Serving plan")
+        conversation.offTheRecord = offTheRecord
         context.insert(conversation)
         let turn = Message(role: "user", content: "We run vLLM in production today.")
         turn.createdAt = now - 60
@@ -120,6 +122,35 @@ final class GraphRetrieverTests: XCTestCase {
         let turn = try XCTUnwrap(passages.first { $0.messageID != nil })
         XCTAssertEqual(turn.title, "Your conversation: Serving plan")
         XCTAssertEqual(turn.why, .named(theme: "vLLM"))
+    }
+
+    @MainActor
+    func testOffTheRecordTurnsAreNeverQuotedIntoOtherChats() async throws {
+        let fixture = try await RetrievalFixture(offTheRecord: true)
+        let turn = try XCTUnwrap(fixture.conversation.messages?.first)
+        let chunks = turn.chunks ?? []
+        XCTAssertFalse(chunks.isEmpty, "off-the-record turns are still indexed on-device")
+        XCTAssertTrue(chunks.allSatisfy(\.localOnly), "and marked local-only down to the chunk")
+
+        let passages = try await fixture.retrieve("what did we say about vllm")
+        XCTAssertFalse(passages.contains { $0.messageID != nil }, "an off-the-record turn never reaches another chat")
+
+        // Even a guessed or injected reference to the turn is refused.
+        let ledger = ReferenceLedger()
+        ledger.register([RetrievedPassage(id: "R1", chunkID: UUID(), articleID: nil, messageID: turn.id,
+                                          title: "Your conversation", text: "", why: .named(theme: "vLLM"))])
+        let open = OpenArticleTool(ledger: ledger, context: fixture.context)
+        let refused = try await open.run(arguments: ["id": "R1"])
+        XCTAssertEqual(refused, "Reference R1 is private to this device and can't be shared.")
+    }
+
+    @MainActor
+    func testTurnsIndexedBeforeGoingOffTheRecordAreHeldBackToo() async throws {
+        // Chunks written before off-the-record chunks were marked local-only.
+        let fixture = try await RetrievalFixture()
+        fixture.conversation.offTheRecord = true
+        let passages = try await fixture.retrieve("what did we say about vllm")
+        XCTAssertFalse(passages.contains { $0.messageID != nil })
     }
 
     @MainActor

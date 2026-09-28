@@ -196,6 +196,9 @@ public struct OpenArticleTool: StrategistTool {
             guard let message = try context.fetch(FetchDescriptor<Message>(predicate: #Predicate { $0.id == messageID })).first else {
                 return "Reference \(id) is no longer in the library."
             }
+            guard ContextPolicy.messageMayLeaveDevice(message) else {
+                return "Reference \(id) is private to this device and can't be shared."
+            }
             text = message.content
         } else {
             text = passage.text
