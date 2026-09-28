@@ -2,6 +2,7 @@ import SwiftUI
 import SwiftData
 import FoundationModels
 import BYOKLLMKit
+import ModelCatalogKit
 import KnowledgeStore
 import StrategistCore
 
@@ -27,6 +28,7 @@ struct OnboardingView: View {
     @State private var showingLinks = false
     @State private var errorMessage: String?
     @State private var keysVersion = 0
+    @State private var models = ProviderModelController.shared
 
     var body: some View {
         NavigationStack {
@@ -74,9 +76,7 @@ struct OnboardingView: View {
                             Text(provider.displayName).tag(provider.rawValue)
                         }
                     }
-                    TextField("Model ID", text: $model)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
+                    modelField
                 }
             } header: {
                 Text("Your model")
@@ -100,6 +100,39 @@ struct OnboardingView: View {
         .onChange(of: keysVersion) { _, _ in selectAvailableProvider() }
         .onChange(of: providerRaw) { _, newValue in
             if let provider = LLMProvider(rawValue: newValue) { model = provider.exampleModelID }
+        }
+        .task(id: providerRaw) {
+            guard let provider = LLMProvider(rawValue: providerRaw) else { return }
+            await models.load(provider: provider)
+            let entries = models.models(for: provider)
+            if !entries.isEmpty, !entries.contains(where: { $0.id == model }) {
+                model = entries.first?.id ?? model
+            }
+        }
+    }
+
+    /// A live picker of `providerRaw`'s own models once the key that added
+    /// it has been verified; a free-text field otherwise (a provider without
+    /// a `/models` endpoint SmartWard could read, or one still loading).
+    @ViewBuilder
+    private var modelField: some View {
+        let provider = LLMProvider(rawValue: providerRaw)
+        let entries: [CatalogEntry] = provider.map { models.models(for: $0) } ?? []
+        if !entries.isEmpty {
+            Picker("Model", selection: $model) {
+                ForEach(entries, id: \.id) { entry in
+                    Text(entry.name ?? entry.id).tag(entry.id)
+                }
+            }
+        } else {
+            HStack {
+                TextField("Model ID", text: $model)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                if let provider, models.isRefreshing(provider) {
+                    ProgressView()
+                }
+            }
         }
     }
 
