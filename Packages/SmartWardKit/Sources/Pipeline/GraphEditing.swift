@@ -16,9 +16,16 @@ public enum GraphEditing {
         let nodeID = node.id
         let targetID = target.id
 
+        // One mention per (theme, chunk): a chunk that named both keeps just
+        // the target's, so merging doesn't double its strength.
+        let targetChunks = Set((target.mentions ?? []).compactMap { $0.chunk?.id })
         let moved = node.mentions ?? []
         for mention in moved {
-            mention.node = target
+            if let chunk = mention.chunk?.id, targetChunks.contains(chunk) {
+                context.delete(mention)
+            } else {
+                mention.node = target
+            }
         }
         // Detach before deleting so the cascade can't take the moved mentions.
         node.mentions = []
@@ -66,13 +73,29 @@ public enum GraphEditing {
         fresh.aliases?.append(EntityAlias(alias: label, origin: "user"))
         context.delete(alias)
 
+        var movedChunks = Set<UUID>()
         for mention in node.mentions ?? [] {
-            guard let text = mention.chunk?.text, text.localizedCaseInsensitiveContains(label) else { continue }
+            guard let chunk = mention.chunk, chunk.text.localizedCaseInsensitiveContains(label) else { continue }
             // "gpt-4o mini" contains "gpt-4o": look for the original label
             // only in what's left once the alias is taken out.
-            let remainder = text.replacingOccurrences(of: label, with: " ", options: .caseInsensitive)
+            let remainder = chunk.text.replacingOccurrences(of: label, with: " ", options: .caseInsensitive)
             guard !remainder.localizedCaseInsensitiveContains(node.canonicalLabel) else { continue }
             mention.node = fresh
+            movedChunks.insert(chunk.id)
+        }
+
+        // Relations stated in the chunks that moved are about the new theme.
+        if !movedChunks.isEmpty {
+            let nodeID = node.id
+            let freshID = fresh.id
+            let edges = (try? context.fetch(FetchDescriptor<ThemeEdge>(predicate: #Predicate {
+                $0.sourceNodeID == nodeID || $0.targetNodeID == nodeID
+            }))) ?? []
+            for edge in edges {
+                guard let evidence = edge.evidenceChunkID, movedChunks.contains(evidence) else { continue }
+                if edge.sourceNodeID == nodeID { edge.sourceNodeID = freshID }
+                if edge.targetNodeID == nodeID { edge.targetNodeID = freshID }
+            }
         }
         return fresh
     }

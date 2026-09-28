@@ -45,6 +45,24 @@ final class BackupTests: XCTestCase {
         XCTAssertEqual(chunk.mentions?.first?.node?.aliases?.first?.alias, "vllm")
     }
 
+    /// What Settings → Backup & restore does: erase and restore in one save.
+    @MainActor
+    func testReplacingTheLibraryRestoresInOneSave() throws {
+        let fixture = try LibraryFixture()
+        let context = fixture.context
+        let before = try LibraryArchive.snapshot(context: context, includePrivate: true, includeEmbeddings: true,
+                                                 now: fixture.now)
+        let articles = try context.fetchCount(FetchDescriptor<Article>())
+
+        try before.replaceLibrary(in: context)
+
+        let after = try LibraryArchive.snapshot(context: context, includePrivate: true, includeEmbeddings: true,
+                                                now: fixture.now)
+        XCTAssertEqual(after, before, "the old rows are gone and the archive's are back, not both")
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<Article>()), articles)
+        XCTAssertFalse(context.hasChanges, "saved in one go")
+    }
+
     @MainActor
     func testRestoreNeedsAnEmptyLibrary() throws {
         let fixture = try LibraryFixture()

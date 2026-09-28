@@ -19,7 +19,28 @@ public extension LibraryArchive {
     @MainActor
     func restore(into context: ModelContext) throws {
         guard try Self.isEmpty(context) else { throw RestoreError.libraryNotEmpty }
+        insertRows(into: context)
+    }
 
+    /// Erases the library and restores this archive in a single save. If
+    /// anything fails, nothing is saved and the current library is left as
+    /// it was, rather than erased with nothing restored.
+    @MainActor
+    func replaceLibrary(in context: ModelContext) throws {
+        do {
+            for type in KnowledgeSchema.models {
+                try Self.deleteAll(type, in: context)
+            }
+            insertRows(into: context)
+            try context.save()
+        } catch {
+            context.rollback()
+            throw error
+        }
+    }
+
+    @MainActor
+    private func insertRows(into context: ModelContext) {
         var nodes: [UUID: ThemeNode] = [:]
         for record in themeNodes {
             let node = ThemeNode(type: record.type, canonicalLabel: record.canonicalLabel)

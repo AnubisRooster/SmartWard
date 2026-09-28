@@ -108,9 +108,8 @@ public struct FetchURLTool: StrategistTool {
         guard url.port == nil || url.port == 80 || url.port == 443 else {
             throw ProjectToolError.invalidArguments("only the standard web ports are allowed")
         }
-        let localSuffixes = [".localhost", ".local", ".internal", ".lan", ".home.arpa"]
-        let isIPv4 = host.split(separator: ".").count == 4 && host.allSatisfy { $0.isNumber || $0 == "." }
-        guard !isIPv4, !host.contains(":"), !localSuffixes.contains(where: { host.hasSuffix($0) }) else {
+        // Redirects are held to the same rule (IngestKit's `RedirectPolicy`).
+        guard PublicHost.isPublic(host) else {
             throw ProjectToolError.invalidArguments("only public, named hosts can be fetched")
         }
         guard (url.query?.count ?? 0) <= maxQueryLength else {

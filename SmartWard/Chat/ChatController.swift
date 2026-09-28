@@ -171,8 +171,7 @@ final class ChatController {
     }
 
     private func requestApproval(_ action: ActionRequest, handsFree: Bool) async -> Bool {
-        switch ActionTools.decision(for: action.tool, autoApprove: autoApproveEnabled,
-                                    handsFree: handsFree, declinesAll: declinesActions) {
+        switch decision(for: action, handsFree: handsFree) {
         case .approve:
             return true
         case .decline:
@@ -193,8 +192,10 @@ final class ChatController {
         UserDefaults.standard.bool(forKey: ActionTools.autoApproveKey)
     }
 
-    private func isAutoApproved(_ tool: String) -> Bool {
-        autoApproveEnabled && ActionTools.autoApprovableTools.contains(tool)
+    /// How `action` is answered; the activity log reports the same answer.
+    private func decision(for action: ActionRequest, handsFree: Bool) -> ApprovalDecision {
+        ActionTools.decision(for: action.tool, autoApprove: autoApproveEnabled,
+                             handsFree: handsFree, declinesAll: declinesActions)
     }
 
     /// What a reply was given, for its Sources list: text is trimmed to a teaser.
@@ -217,16 +218,19 @@ final class ChatController {
         case .toolCall(let name, _):
             activity.append("Using \(name)…")
         case .awaitingConfirmation(let action):
-            if isAutoApproved(action.tool) {
+            switch decision(for: action, handsFree: handsFree) {
+            case .approve:
                 activity.append("Auto-approved: \(action.title) (\(action.detail))")
-            } else if handsFree {
+            case .decline where handsFree:
                 activity.append("Skipped in a voice conversation: \(action.title) (\(action.detail))")
-            } else {
+            case .decline:
+                activity.append("Declined, with nobody to ask: \(action.title) (\(action.detail))")
+            case .ask:
                 activity.append("Asking you: \(action.title)")
             }
         case .confirmationResolved(let action, let approved):
-            // The auto-approved and hands-free cases already logged themselves above.
-            if !isAutoApproved(action.tool) && !handsFree {
+            // Only answers you gave; the others logged themselves above.
+            if decision(for: action, handsFree: handsFree) == .ask {
                 activity.append("\(approved ? "Approved" : "Declined"): \(action.title) (\(action.detail))")
             }
         case .toolResult(let name, let result, let isError):

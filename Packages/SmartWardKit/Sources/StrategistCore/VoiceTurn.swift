@@ -32,9 +32,14 @@ public enum VoiceTurn {
     public static let failureMessage =
         "Sorry, that didn't go through, so I've stopped listening. The details are on screen."
 
-    public static func outcome(reply: String?, failed: Bool) -> Outcome {
+    /// - Parameter clean: what the speech engine does to text before
+    ///   speaking it (VoiceLoopKit's `SpeechService.speakableText`), applied
+    ///   before the reply is shortened.
+    public static func outcome(reply: String?, failed: Bool,
+                               clean: (String) -> String = { $0 }) -> Outcome {
         if failed { return .fail(failureMessage) }
-        let spoken = reply.map { spokenText($0) } ?? ""
+        guard let reply else { return .listen }
+        let spoken = spokenText(reply, clean: clean)
         return spoken.isEmpty ? .listen : .speak(spoken)
     }
 
@@ -44,13 +49,15 @@ public enum VoiceTurn {
     static let truncationNote = " The rest is on screen."
 
     /// `reply` as it should be spoken: library citations like [R1] or
-    /// [R1, R2] dropped (the Sources list on screen carries them), and a long
-    /// reply cut at a sentence boundary. Markdown, links, code and tables are
-    /// left to VoiceLoopKit's `SpeechService`, which strips them itself.
-    public static func spokenText(_ reply: String) -> String {
-        let text = reply
+    /// [R1, R2] dropped (the Sources list on screen carries them), `clean`ed
+    /// of markdown, links, code and tables, and then, if still long, cut at a
+    /// sentence boundary. Cleaning first means the cut counts only what's
+    /// actually said, and can't land inside a code block that would then be
+    /// read aloud.
+    public static func spokenText(_ reply: String, clean: (String) -> String = { $0 }) -> String {
+        let uncited = reply
             .replacingOccurrences(of: #"\s*\[R\d+(?:\s*,\s*R\d+)*\]"#, with: "", options: .regularExpression)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let text = clean(uncited).trimmingCharacters(in: .whitespacesAndNewlines)
         guard text.count > maxSpokenCharacters else { return text }
 
         let prefix = text.prefix(maxSpokenCharacters)

@@ -2,6 +2,7 @@ import Foundation
 import SwiftData
 import IngestKit
 import KnowledgeStore
+import StrategistCore
 
 /// Adding a feed from outside the Sources screen: the strategist's
 /// `add_source` (after your approval) and the "Add a source" shortcut. Both
@@ -54,6 +55,22 @@ public enum SourceIntake {
         guard !existing.contains(where: { $0.url.lowercased() == key }) else { throw Refusal.alreadyFollowed }
         let name = (title ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         return Plan(kind: kind, url: url, title: String((name.isEmpty ? address : name).prefix(80)))
+    }
+
+    /// Onboarding's proposed sources, held to the same validation as every
+    /// other way of adding one: a normalized address, no local or unsafe
+    /// host, nothing already followed. Ones it refuses are dropped.
+    @MainActor
+    public static func checked(_ proposal: OnboardingProposal, context: ModelContext) -> OnboardingProposal {
+        var result = proposal
+        result.sources = proposal.sources.compactMap { source in
+            guard let kind = SourceKind(rawValue: source.kind),
+                  let plan = try? Self.plan(kind: kind, address: source.url, title: source.title, context: context) else {
+                return nil
+            }
+            return OnboardingProposal.SourceProposal(kind: plan.kind.rawValue, url: plan.url, title: plan.title)
+        }
+        return result
     }
 
     /// Adds an enabled source; it's fetched on the next refresh.
