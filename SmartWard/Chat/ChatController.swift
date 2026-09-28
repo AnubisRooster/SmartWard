@@ -21,8 +21,19 @@ final class ChatController {
     var errorMessage: String?
 
     private var approval: CheckedContinuation<Bool, Never>?
-    /// For runs with nobody to ask (Siri, Shortcuts): every action is declined.
-    var declinesActions = false
+
+    /// Who's on the other end of a turn.
+    enum Turn: Equatable {
+        /// Typed in the composer: approval cards can be tapped.
+        case typed
+        /// A voice conversation: nobody can tap a card, so only
+        /// auto-approved actions run.
+        case spoken
+        /// Siri or Shortcuts: nobody to ask, so every action is declined.
+        case unattended
+
+        var isHandsFree: Bool { self != .typed }
+    }
 
     /// `nil` uses your provider with model fallback (NFR-5).
     private let llm: (any LLMCompleting)?
@@ -36,8 +47,8 @@ final class ChatController {
     ///   none (an error, or a tool-only round).
     @discardableResult
     func send(in conversation: Conversation, context: ModelContext) async -> String? {
-        await run(draft.trimmingCharacters(in: .whitespacesAndNewlines), in: conversation, context: context,
-                  handsFree: false, fromDraft: true)
+        let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        return await run(text, in: conversation, context: context, turn: .typed)
     }
 
     /// Sends a spoken turn. Leaves the typed draft alone. Hands-free there's
@@ -47,18 +58,27 @@ final class ChatController {
     @discardableResult
     func sendSpoken(_ text: String, in conversation: Conversation, context: ModelContext) async -> String? {
         await run(text.trimmingCharacters(in: .whitespacesAndNewlines), in: conversation, context: context,
-                  handsFree: true, fromDraft: false)
+                  turn: .spoken)
+    }
+
+    /// Sends a question from Siri or Shortcuts. Nobody can approve anything,
+    /// so tools that would need approval aren't offered, and any action is
+    /// declined.
+    @discardableResult
+    func sendUnattended(_ text: String, in conversation: Conversation, context: ModelContext) async -> String? {
+        await run(text.trimmingCharacters(in: .whitespacesAndNewlines), in: conversation, context: context,
+                  turn: .unattended)
     }
 
     private func run(_ text: String, in conversation: Conversation, context: ModelContext,
-                     handsFree: Bool, fromDraft: Bool) async -> String? {
+                     turn: Turn) async -> String? {
         guard !text.isEmpty, !isRunning else { return nil }
         guard let provider = LLMProvider(rawValue: conversation.provider) else {
             errorMessage = "This chat's provider '\(conversation.provider)' isn't available. Start a new chat."
             return nil
         }
 
-        if fromDraft { draft = "" }
+        if turn == .typed { draft = "" }
         errorMessage = nil
         streamingText = ""
         activity = []
@@ -92,8 +112,8 @@ final class ChatController {
         let references = ledger.register(found)
         system += "\n\n" + ReferenceContext.guidance
         var allowed = StrategistPrompt.allowedTools(for: conversation.mode)
-        if handsFree {
-            allowed = ActionTools.handsFreeTools(allowed, autoApprove: autoApproveEnabled)
+        if turn.isHandsFree {
+            allowed = ActionTools.handsFreeTools(allowed, autoApprove: turn == .spoken && autoApproveEnabled)
             system += "\n\n" + VoiceTurn.promptNote
         }
         if !allowed.isDisjoint(with: ["fetch_url", "add_source"]) {
@@ -134,10 +154,9 @@ final class ChatController {
         do {
             let produced = try await runner.run(request: request, tools: tools,
                                                 confirm: { action in
-                                                    await self.requestApproval(action, handsFree: handsFree)
+                                                    await self.requestApproval(action, turn: turn)
                                                 }) { event in
-                self.handle(event, provider: provider, conversation: conversation, context: context,
-                            handsFree: handsFree)
+                self.handle(event, provider: provider, conversation: conversation, context: context, turn: turn)
             }
             let reply = produced
                 .filter { $0.role == .assistant }
@@ -170,8 +189,8 @@ final class ChatController {
         approval.resume(returning: approved)
     }
 
-    private func requestApproval(_ action: ActionRequest, handsFree: Bool) async -> Bool {
-        switch decision(for: action, handsFree: handsFree) {
+    private func requestApproval(_ action: ActionRequest, turn: Turn) async -> Bool {
+        switch decision(for: action, turn: turn) {
         case .approve:
             return true
         case .decline:
@@ -193,9 +212,9 @@ final class ChatController {
     }
 
     /// How `action` is answered; the activity log reports the same answer.
-    private func decision(for action: ActionRequest, handsFree: Bool) -> ApprovalDecision {
+    private func decision(for action: ActionRequest, turn: Turn) -> ApprovalDecision {
         ActionTools.decision(for: action.tool, autoApprove: autoApproveEnabled,
-                             handsFree: handsFree, declinesAll: declinesActions)
+                             handsFree: turn.isHandsFree, declinesAll: turn == .unattended)
     }
 
     /// What a reply was given, for its Sources list: text is trimmed to a teaser.
@@ -211,17 +230,17 @@ final class ChatController {
     }
 
     private func handle(_ event: StrategistEvent, provider: LLMProvider,
-                        conversation: Conversation, context: ModelContext, handsFree: Bool) {
+                        conversation: Conversation, context: ModelContext, turn: Turn) {
         switch event {
         case .textDelta(let text):
             streamingText += text
         case .toolCall(let name, _):
             activity.append("Using \(name)…")
         case .awaitingConfirmation(let action):
-            switch decision(for: action, handsFree: handsFree) {
+            switch decision(for: action, turn: turn) {
             case .approve:
                 activity.append("Auto-approved: \(action.title) (\(action.detail))")
-            case .decline where handsFree:
+            case .decline where turn == .spoken:
                 activity.append("Skipped in a voice conversation: \(action.title) (\(action.detail))")
             case .decline:
                 activity.append("Declined, with nobody to ask: \(action.title) (\(action.detail))")
@@ -230,7 +249,7 @@ final class ChatController {
             }
         case .confirmationResolved(let action, let approved):
             // Only answers you gave; the others logged themselves above.
-            if decision(for: action, handsFree: handsFree) == .ask {
+            if decision(for: action, turn: turn) == .ask {
                 activity.append("\(approved ? "Approved" : "Declined"): \(action.title) (\(action.detail))")
             }
         case .toolResult(let name, let result, let isError):

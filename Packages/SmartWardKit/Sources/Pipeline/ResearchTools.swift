@@ -147,7 +147,10 @@ extension GraphNeighborsTool {
                                                  sortBy: [SortDescriptor(\.createdAt)])
         byLabel.fetchLimit = 1
         if let node = try context.fetch(byLabel).first { return node }
-        return try context.fetch(FetchDescriptor<EntityAlias>())
+        // Through the alias's stored key; not-yet-backfilled ones (empty key) by hand.
+        return try context.fetch(FetchDescriptor<EntityAlias>(predicate: #Predicate {
+            $0.normalizedKey == key || $0.normalizedKey == ""
+        }))
             .first { EntityResolver.key($0.alias) == key && $0.node != nil }?
             .node
     }

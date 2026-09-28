@@ -196,9 +196,14 @@ public struct GraphRetriever {
         var matches = try context.fetch(FetchDescriptor<ThemeNode>(predicate: #Predicate {
             candidates.contains($0.normalizedKey)
         }))
-        // Aliases have no stored key; they're short strings, so scan them.
+        // Aliases through their stored key; ones not yet backfilled (empty
+        // key) are checked by hand.
         let known = Set(matches.map(\.id))
-        for alias in try context.fetch(FetchDescriptor<EntityAlias>()) {
+        let keys = Array(grams)
+        let aliases = try context.fetch(FetchDescriptor<EntityAlias>(predicate: #Predicate {
+            keys.contains($0.normalizedKey) || $0.normalizedKey == ""
+        }))
+        for alias in aliases {
             guard let node = alias.node, !known.contains(node.id), grams.contains(EntityResolver.key(alias.alias)) else { continue }
             matches.append(node)
         }
