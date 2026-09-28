@@ -83,9 +83,15 @@ final class DigestController {
         guard Self.notificationsEnabled, let top = clusters.first, !digest.notified else { return }
         let content = UNMutableNotificationContent()
         content.title = "Your SmartWard digest"
-        content.body = clusters.count == 1
-            ? "New on \(top.title)."
-            : "\(clusters.count) themes. Top: \(top.title)."
+        // Notifications show on the lock screen: with SmartWard's lock on,
+        // what you've been reading about stays behind it.
+        if AppLockController.shared.isEnabled {
+            content.body = "A new digest is ready."
+        } else {
+            content.body = clusters.count == 1
+                ? "New on \(top.title)."
+                : "\(clusters.count) themes. Top: \(top.title)."
+        }
         content.sound = .default
         let request = UNNotificationRequest(identifier: "digest.\(digest.id.uuidString)", content: content, trigger: nil)
         do {

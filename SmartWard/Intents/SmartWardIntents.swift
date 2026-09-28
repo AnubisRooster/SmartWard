@@ -4,6 +4,8 @@ import SwiftData
 import BYOKLLMKit
 import KnowledgeStore
 import Pipeline
+import StrategistCore
+import VoiceLoopKit
 
 // Siri, Shortcuts and Spotlight (PLAN Phase 5). Actions that need your
 // approval in the app (the strategist fetching pages, adding sources or
@@ -92,9 +94,6 @@ struct AskStrategistIntent: AppIntent {
         }
     }
 
-    /// Siri reads replies aloud; keep it to a listenable length.
-    static let spokenLimit = 1_000
-
     @MainActor
     func perform() async throws -> some IntentResult & ProvidesDialog {
         let context = try libraryContext()
@@ -114,9 +113,7 @@ struct AskStrategistIntent: AppIntent {
         }
 
         let chat = ChatController()
-        chat.declinesActions = true
-        chat.draft = question
-        await chat.send(in: conversation, context: context)
+        let reply = await chat.sendUnattended(question, in: conversation, context: context) ?? ""
         try? context.save()
 
         if let error = chat.errorMessage {
@@ -126,11 +123,10 @@ struct AskStrategistIntent: AppIntent {
         if AppLockController.shared.isEnabled {
             return .result(dialog: "Your answer is saved in SmartWard. Open the app to read it.")
         }
-        let reply = (conversation.messages ?? [])
-            .filter { $0.role == "assistant" }
-            .max { $0.createdAt < $1.createdAt }?
-            .content ?? ""
-        let spoken = reply.count > Self.spokenLimit ? String(reply.prefix(Self.spokenLimit)) + "… (the rest is in SmartWard)" : reply
+        // Read aloud like a voice conversation's reply: no citations, links,
+        // code or tables, and a long answer cut at a sentence.
+        let spoken = VoiceTurn.spokenText(reply, clean: SpeechService.speakableText,
+                                          ending: " The rest is in SmartWard.")
         return .result(dialog: IntentDialog(stringLiteral: spoken.isEmpty ? "No answer came back." : spoken))
     }
 }

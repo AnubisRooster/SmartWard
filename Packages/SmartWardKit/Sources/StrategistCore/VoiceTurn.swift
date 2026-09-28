@@ -46,7 +46,7 @@ public enum VoiceTurn {
     /// Spoken replies stop around here, at a sentence boundary, and point to
     /// the rest on screen.
     public static let maxSpokenCharacters = 1_200
-    static let truncationNote = " The rest is on screen."
+    public static let truncationNote = " The rest is on screen."
 
     /// `reply` as it should be spoken: library citations like [R1] or
     /// [R1, R2] dropped (the Sources list on screen carries them), `clean`ed
@@ -54,7 +54,9 @@ public enum VoiceTurn {
     /// sentence boundary. Cleaning first means the cut counts only what's
     /// actually said, and can't land inside a code block that would then be
     /// read aloud.
-    public static func spokenText(_ reply: String, clean: (String) -> String = { $0 }) -> String {
+    /// - Parameter ending: what's said after a cut reply.
+    public static func spokenText(_ reply: String, clean: (String) -> String = { $0 },
+                                  ending: String = truncationNote) -> String {
         let uncited = reply
             .replacingOccurrences(of: #"\s*\[R\d+(?:\s*,\s*R\d+)*\]"#, with: "", options: .regularExpression)
         let text = clean(uncited).trimmingCharacters(in: .whitespacesAndNewlines)
@@ -73,7 +75,7 @@ public enum VoiceTurn {
         } else {
             cut = prefix
         }
-        return cut.trimmingCharacters(in: .whitespacesAndNewlines) + truncationNote
+        return cut.trimmingCharacters(in: .whitespacesAndNewlines) + ending
     }
 
     /// Added to the system prompt for a voice turn.

@@ -26,14 +26,37 @@ public enum GraphLinker {
         // Edges only ever come with mentions, so chunks without mentions
         // were never linked and there is nothing to look up.
         guard chunks.contains(where: { !($0.mentions ?? []).isEmpty }) else { return }
-        let ids = Set(chunks.map(\.id))
         for chunk in chunks {
             for mention in chunk.mentions ?? [] { context.delete(mention) }
             chunk.mentions = []
         }
-        for edge in try context.fetch(FetchDescriptor<ThemeEdge>()) {
-            if let evidence = edge.evidenceChunkID, ids.contains(evidence) { context.delete(edge) }
+        // Just these chunks' edges, not the whole graph.
+        for id in Set(chunks.map(\.id)) {
+            for edge in try context.fetch(FetchDescriptor<ThemeEdge>(predicate: #Predicate { $0.evidenceChunkID == id })) {
+                context.delete(edge)
+            }
         }
+    }
+
+    /// Deletes edges whose evidence chunk is gone: its article, repo doc or
+    /// chat was deleted. (Mentions go with their chunk; edges only point at
+    /// it by id.) Reads every edge's and chunk's id, so it runs in the
+    /// on-power background window, not after every chat turn.
+    /// - Returns: how many edges were deleted.
+    @discardableResult
+    public static func pruneOrphanedEdges(context: ModelContext) throws -> Int {
+        var chunkIDs = FetchDescriptor<KnowledgeStore.Chunk>()
+        chunkIDs.propertiesToFetch = [\.id]
+        let existing = Set(try context.fetch(chunkIDs).map(\.id))
+        var edges = FetchDescriptor<ThemeEdge>(predicate: #Predicate { $0.evidenceChunkID != nil })
+        edges.propertiesToFetch = [\.evidenceChunkID]
+        var deleted = 0
+        for edge in try context.fetch(edges) {
+            guard let evidence = edge.evidenceChunkID, !existing.contains(evidence) else { continue }
+            context.delete(edge)
+            deleted += 1
+        }
+        return deleted
     }
 
     /// Links `graph`, extracted from the text of `chunks`, attributing each

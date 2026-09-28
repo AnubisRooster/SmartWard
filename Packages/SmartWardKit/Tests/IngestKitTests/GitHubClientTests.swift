@@ -50,6 +50,22 @@ final class GitHubClientTests: XCTestCase {
         XCTAssertNil(transport.requests.first?.value(forHTTPHeaderField: "Authorization"))
     }
 
+    func testRepositoriesListsEveryPage() async throws {
+        func repos(_ range: Range<Int>) -> String {
+            "[" + range.map { #"{"full_name":"me/r\#($0)","private":false,"default_branch":"main","html_url":"https://github.com/me/r\#($0)"}"# }
+                .joined(separator: ",") + "]"
+        }
+        let transport = FakeTransport { request in
+            let page = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?
+                .queryItems?.first { $0.name == "page" }?.value
+            return (200, [:], page == "1" ? repos(0..<100) : repos(100..<130))
+        }
+        let all = try await GitHubClient(token: "t", transport: transport).repositories()
+        XCTAssertEqual(all.count, 130)
+        XCTAssertEqual(all.last?.fullName, "me/r129")
+        XCTAssertEqual(transport.requests.count, 2, "stops at the first short page")
+    }
+
     func testNotModifiedReturnsNilAndSendsIfNoneMatch() async throws {
         let transport = FakeTransport { _ in (304, [:], "") }
         let result = try await GitHubClient(transport: transport).repository("a/b", etag: "\"abc\"")

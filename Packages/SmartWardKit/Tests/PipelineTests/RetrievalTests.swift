@@ -154,6 +154,25 @@ final class GraphRetrieverTests: XCTestCase {
     }
 
     @MainActor
+    func testAliasesAreFoundByTheirStoredKeyAndOlderOnesStill() async throws {
+        let fixture = try await RetrievalFixture()
+        let medusa = try XCTUnwrap(fixture.context.fetch(FetchDescriptor<ThemeNode>()).first { $0.canonicalLabel == "Medusa" })
+        let alias = EntityAlias(alias: "Medusa Heads Decoding")
+        XCTAssertEqual(alias.normalizedKey, "medusa-heads-decoding")
+        let legacy = EntityAlias(alias: "Multi-Head Drafts")
+        legacy.normalizedKey = ""  // saved before the key existed
+        medusa.aliases?.append(contentsOf: [alias, legacy])
+        try fixture.context.save()
+
+        let retriever = GraphRetriever()
+        XCTAssertTrue(try retriever.namedNodes(in: "what about medusa heads decoding", context: fixture.context)
+            .contains { $0.id == medusa.id })
+        XCTAssertTrue(try retriever.namedNodes(in: "multi head drafts?", context: fixture.context)
+            .contains { $0.id == medusa.id })
+        XCTAssertEqual(try GraphNeighborsTool.theme(named: "multi-head drafts", context: fixture.context)?.id, medusa.id)
+    }
+
+    @MainActor
     func testNamedNodesMatchLabelsAndAliasesAsWholeWords() async throws {
         let fixture = try await RetrievalFixture()
         let retriever = GraphRetriever()

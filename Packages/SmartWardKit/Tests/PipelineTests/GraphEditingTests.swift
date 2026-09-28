@@ -107,6 +107,37 @@ final class GraphEditingTests: XCTestCase {
     }
 
     @MainActor
+    func testEdgesWhoseEvidenceWasDeletedArePruned() throws {
+        let container = try KnowledgeSchema.makeContainer(inMemory: true)
+        let context = container.mainContext
+        let kept = Article(canonicalURL: "https://x.example/kept", title: "Kept")
+        let gone = Article(canonicalURL: "https://x.example/gone", title: "Gone")
+        context.insert(kept)
+        context.insert(gone)
+        let keptChunk = KnowledgeStore.Chunk(text: "vLLM uses speculative decoding")
+        let goneChunk = KnowledgeStore.Chunk(text: "vLLM competes with TGI")
+        kept.chunks?.append(keptChunk)
+        gone.chunks?.append(goneChunk)
+        let vllm = ThemeNode(type: "tool", canonicalLabel: "vLLM")
+        let other = ThemeNode(type: "tool", canonicalLabel: "TGI")
+        context.insert(vllm)
+        context.insert(other)
+        let stays = ThemeEdge(sourceNodeID: vllm.id, targetNodeID: other.id, type: "USES", evidenceChunkID: keptChunk.id)
+        let orphan = ThemeEdge(sourceNodeID: vllm.id, targetNodeID: other.id, type: "COMPETES_WITH",
+                               evidenceChunkID: goneChunk.id)
+        let noEvidence = ThemeEdge(sourceNodeID: vllm.id, targetNodeID: other.id, type: "RELATES_TO")
+        for edge in [stays, orphan, noEvidence] { context.insert(edge) }
+        try context.save()
+
+        context.delete(gone)
+        try context.save()
+        XCTAssertEqual(try GraphLinker.pruneOrphanedEdges(context: context), 1)
+        try context.save()
+        XCTAssertEqual(Set(try context.fetch(FetchDescriptor<ThemeEdge>()).map(\.id)), [stays.id, noEvidence.id])
+        XCTAssertEqual(try GraphLinker.pruneOrphanedEdges(context: context), 0, "nothing left to prune")
+    }
+
+    @MainActor
     func testDismissKeepsThePairSeparate() throws {
         let container = try KnowledgeSchema.makeContainer(inMemory: true)
         let suggestion = MergeSuggestion(nodeID: UUID(), candidateID: UUID(), similarity: 0.9)

@@ -235,31 +235,35 @@ public struct GraphSnapshot: Equatable, Sendable {
             descriptor.relationshipKeyPathsForPrefetching = [\.node]
             return Set(try context.fetch(descriptor).compactMap { $0.node?.id })
         case .source(let sourceID):
-            var descriptor = FetchDescriptor<Mention>()
-            descriptor.relationshipKeyPathsForPrefetching = [\.node, \.chunk]
-            return Set(try context.fetch(descriptor).compactMap { mention in
-                mention.chunk?.article?.source?.id == sourceID ? mention.node?.id : nil
-            })
+            return try nodeIDs(inArticlesOf: sourceID, context: context)
         case .project(let projectID):
             guard let project = try context.fetch(FetchDescriptor<Project>(predicate: #Predicate { $0.id == projectID })).first else {
                 return []
             }
             var ids = Set((project.pinnedNodes ?? []).map(\.id))
-            let conversationIDs = Set((project.conversations ?? []).map(\.id))
-            let sourceIDs = Set((project.links ?? []).compactMap(\.sourceID))
-            guard !conversationIDs.isEmpty || !sourceIDs.isEmpty else { return ids }
-            var descriptor = FetchDescriptor<Mention>()
-            descriptor.relationshipKeyPathsForPrefetching = [\.node, \.chunk]
-            for mention in try context.fetch(descriptor) {
-                guard let nodeID = mention.node?.id else { continue }
-                if let conversation = mention.chunk?.message?.conversation?.id, conversationIDs.contains(conversation) {
-                    ids.insert(nodeID)
-                } else if let source = mention.chunk?.article?.source?.id, sourceIDs.contains(source) {
-                    ids.insert(nodeID)
-                }
+            // Just the linked sources' articles and the project's chats, rather than every mention.
+            for sourceID in Set((project.links ?? []).compactMap(\.sourceID)) {
+                ids.formUnion(try nodeIDs(inArticlesOf: sourceID, context: context))
+            }
+            for conversation in project.conversations ?? [] {
+                ids.formUnion(nodeIDs(in: (conversation.messages ?? []).flatMap { $0.chunks ?? [] }))
             }
             return ids
         }
+    }
+
+    /// The themes mentioned in `sourceID`'s articles. The predicate stays
+    /// one relationship deep: SwiftData doesn't match chains like
+    /// `chunk?.article?.source?.id`, so the rest is walked in memory.
+    @MainActor
+    private static func nodeIDs(inArticlesOf sourceID: UUID, context: ModelContext) throws -> Set<UUID> {
+        let articles = try context.fetch(FetchDescriptor<Article>(predicate: #Predicate { $0.source?.id == sourceID }))
+        return nodeIDs(in: articles.flatMap { $0.chunks ?? [] })
+    }
+
+    /// The themes mentioned in `chunks`.
+    private static func nodeIDs(in chunks: [KnowledgeStore.Chunk]) -> Set<UUID> {
+        Set(chunks.flatMap { $0.mentions ?? [] }.compactMap { $0.node?.id })
     }
 }
 

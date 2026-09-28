@@ -46,6 +46,8 @@ final class VoiceTurnTests: XCTestCase {
         let reply = String(repeating: "word ", count: 400)
         let spoken = VoiceTurn.spokenText(reply)
         XCTAssertTrue(spoken.hasSuffix("word The rest is on screen."), spoken)
+        XCTAssertTrue(VoiceTurn.spokenText(reply, ending: " The rest is in SmartWard.")
+            .hasSuffix("word The rest is in SmartWard."), "Siri points to the app instead")
     }
 
     func testRepliesAreCleanedBeforeTheyreShortened() {

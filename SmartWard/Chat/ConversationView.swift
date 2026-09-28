@@ -17,6 +17,10 @@ struct ConversationView: View {
     @StateObject private var voice = VoiceConversationController()
     @AppStorage(ActionTools.autoApproveKey) private var autoApprove = false
     @State private var showingVoiceGate = false
+    /// Checked when the chat appears and when the app comes back, not on
+    /// every redraw: it's a Keychain lookup, and a streamed reply redraws
+    /// the view for each token.
+    @State private var hasKey = true
     @FocusState private var composerFocused: Bool
 
     private var messages: [Message] {
@@ -91,8 +95,9 @@ struct ConversationView: View {
         // would otherwise keep listening and reading replies aloud behind
         // the lock screen, or sit stuck after a call cut its audio off.
         .onChange(of: scenePhase) { _, phase in
-            if phase != .active { stopVoice() }
+            if phase == .active { refreshKey() } else { stopVoice() }
         }
+        .onAppear { refreshKey() }
         .onChange(of: lock.isLocked) { _, locked in
             if locked { stopVoice() }
         }
@@ -111,14 +116,32 @@ struct ConversationView: View {
         guard let provider = LLMProvider(rawValue: conversation.provider) else {
             return "This chat's provider isn't available any more. Start a new chat."
         }
-        guard !LLMKeychainStore.shared.hasKey(for: provider) else { return nil }
+        guard !hasKey else { return nil }
         return "There's no API key for \(provider.displayName). Add one in Settings, behind the gear on Today."
+    }
+
+    private func refreshKey() {
+        hasKey = LLMProvider(rawValue: conversation.provider).map { LLMKeychainStore.shared.hasKey(for: $0) } ?? false
     }
 
     private var composer: some View {
         VStack(alignment: .leading, spacing: 4) {
             if voice.isActive {
                 voiceStatus
+            }
+            // Inline rather than an alert: starting voice from the
+            // auto-approve alert can fail at once, and SwiftUI drops an alert
+            // presented while another is still closing.
+            if let error = voice.errorMessage {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Label(error, systemImage: "mic.slash")
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                    Spacer()
+                    Button("Dismiss") { voice.errorMessage = nil }
+                        .font(.caption)
+                        .buttonStyle(.borderless)
+                }
             }
             HStack(alignment: .bottom, spacing: 8) {
                 TextField("Message", text: $controller.draft, axis: .vertical)
@@ -156,12 +179,6 @@ struct ConversationView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("Voice conversations need \"Approve fetches and new sources automatically\", because nobody can tap an approval card hands-free. This lets the strategist read pages and follow sources without asking, in every chat, typed or spoken, until you turn it off in Settings → Strategist actions. Saving decisions to a project always still asks.")
-        }
-        .alert("Voice trouble", isPresented: Binding(get: { voice.errorMessage != nil },
-                                                      set: { if !$0 { voice.errorMessage = nil } })) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text(voice.errorMessage ?? "")
         }
     }
 

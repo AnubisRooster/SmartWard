@@ -41,6 +41,10 @@ public final class EntityResolver {
             if byKey[key] == nil { byKey[key] = node }
         }
         let aliases = try context.fetch(FetchDescriptor<EntityAlias>())
+        // Aliases from before `normalizedKey` existed.
+        for alias in aliases where alias.normalizedKey.isEmpty {
+            alias.normalizedKey = EntityAlias.key(alias.alias)
+        }
         for alias in aliases where alias.origin != "user" {
             let key = Self.key(alias.alias)
             if byKey[key] == nil, let node = alias.node { byKey[key] = node }

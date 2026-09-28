@@ -127,13 +127,24 @@ public struct GitHubClient: Sendable {
         return try decode(GitHubUser.self, from: data)
     }
 
-    /// Repos the signed-in user owns or collaborates on, most recently pushed first.
+    /// At most this many pages of 100 repos are listed.
+    static let maxRepoPages = 10
+
+    /// Repos the signed-in user owns or collaborates on, most recently pushed
+    /// first: every page, not just the first 100.
     public func repositories() async throws -> [GitHubRepo] {
-        let query = [URLQueryItem(name: "per_page", value: "100"),
-                     URLQueryItem(name: "sort", value: "pushed"),
-                     URLQueryItem(name: "affiliation", value: "owner,collaborator,organization_member")]
-        guard let (data, _) = try await get("/user/repos", query: query) else { throw GitHubError.invalidResponse }
-        return try decode([GitHubRepo].self, from: data)
+        var all: [GitHubRepo] = []
+        for page in 1...Self.maxRepoPages {
+            let query = [URLQueryItem(name: "per_page", value: "100"),
+                         URLQueryItem(name: "page", value: String(page)),
+                         URLQueryItem(name: "sort", value: "pushed"),
+                         URLQueryItem(name: "affiliation", value: "owner,collaborator,organization_member")]
+            guard let (data, _) = try await get("/user/repos", query: query) else { throw GitHubError.invalidResponse }
+            let repos = try decode([GitHubRepo].self, from: data)
+            all += repos
+            if repos.count < 100 { break }
+        }
+        return all
     }
 
     /// `nil` when unchanged since `etag` (a 304, which doesn't count against the rate limit).

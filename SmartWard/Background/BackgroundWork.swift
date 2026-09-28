@@ -5,6 +5,7 @@ import SwiftData
 import IngestKit
 import KnowledgeStore
 import ShareInbox
+import Pipeline
 
 /// Background scheduling (PLAN §5.1):
 /// - App refresh: poll feeds. Network only, so it fits the short window.
@@ -69,6 +70,10 @@ enum BackgroundWork {
         let context = container.mainContext
         ShareIntake.importPending(context: context)
         await PipelineController.shared.process(context: context, budget: budget)
+        // Relations whose evidence was deleted; too heavy for every foreground run.
+        if (try? GraphLinker.pruneOrphanedEdges(context: context)) ?? 0 > 0 {
+            try? context.save()
+        }
         await DigestController.shared.buildIfDue(context: context, notify: true)
     }
 

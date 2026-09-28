@@ -435,10 +435,22 @@ public final class EntityAlias {
     public var alias: String = ""
     /// auto | user — user aliases always win.
     public var origin: String = "auto"
+    /// `alias` normalized like `ThemeNode.normalizedKey` (without the type),
+    /// so a lookup by name is a query rather than a scan of every alias.
+    /// Derived from `alias`: set on creation, so restores recreate it, and
+    /// backfilled for rows from before it existed (`EntityResolver`).
+    public var normalizedKey: String = ""
 
     public init(alias: String, origin: String = "auto") {
         self.alias = alias
         self.origin = origin
+        self.normalizedKey = Self.key(alias)
+    }
+
+    /// The lookup key for a name: case, spacing, hyphens and underscores
+    /// don't matter.
+    public static func key(_ name: String) -> String {
+        String(ThemeNode.normalizedKey(type: "", label: name).dropFirst())
     }
 }
 
