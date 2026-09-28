@@ -26,6 +26,7 @@ struct SettingsView: View {
                     Text("What your provider has cost, a daily cap for background work, and model fallback. Export your library as JSON, GraphML or Markdown, or back it up encrypted.")
                 }
                 ReadingSettingsSection()
+                BackgroundRefreshSettingsSection()
                 DigestSettingsSection()
                 KnowledgeGraphSettingsSection()
                 GitHubSettingsSection()
