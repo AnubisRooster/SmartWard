@@ -6,7 +6,7 @@ _Auto-generated from the GitNexus knowledge graph on every push to `main`. Do no
 
 | nodes | edges |
 | ----- | ----- |
-| 5737 | 25272 |
+| 5743 | 25278 |
 
 ## God nodes (highest out-degree, tests excluded)
 
@@ -21,4 +21,4 @@ _Auto-generated from the GitNexus knowledge graph on every push to `main`. Do no
 | BriefService.swift | Packages/SmartWardKit/Sources/StrategistCore/BriefService.swift | 156 |
 | SampleLibrary.swift | Packages/SmartWardKit/Sources/Pipeline/SampleLibrary.swift | 156 |
 | GraphRetrieval.swift | Packages/SmartWardKit/Sources/Pipeline/GraphRetrieval.swift | 155 |
-| Extraction.swift | Packages/SmartWardKit/Sources/Pipeline/Extraction.swift | 154 |
+| ResearchTools.swift | Packages/SmartWardKit/Sources/Pipeline/ResearchTools.swift | 154 |
