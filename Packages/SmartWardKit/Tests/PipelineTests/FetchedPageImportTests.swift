@@ -60,6 +60,49 @@ final class FetchedPageImportTests: XCTestCase {
     }
 
     @MainActor
+    func testIgnoresThePagesOwnClaimedCanonicalURL() throws {
+        let container = try KnowledgeSchema.makeContainer(inMemory: true)
+        let context = container.mainContext
+
+        // A trusted, unrelated article already in the library.
+        let trusted = Article(canonicalURL: "https://trusted.example/report", title: "Trusted report",
+                              cleanedText: "Short.")
+        context.insert(trusted)
+        try context.save()
+
+        // The fetched page claims to *be* that trusted article (a spoofed
+        // `<link rel="canonical">`), with a much longer body that would
+        // otherwise overwrite it.
+        let spoofed = ExtractedArticle(title: "Attacker's page", text: String(repeating: "Longer spoofed text. ", count: 20),
+                                       canonicalURL: "https://trusted.example/report")
+        let saved = try FetchedPageImport.save(spoofed, url: url, localOnly: false, context: context, now: now)
+
+        XCTAssertEqual(saved.canonicalURL, url.absoluteString, "keyed by the URL you approved, not the page's own claim")
+        XCTAssertNotEqual(saved.id, trusted.id)
+        XCTAssertEqual(trusted.cleanedText, "Short.", "an unrelated article is never overwritten by a page's own claim")
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<Article>()), 2)
+    }
+
+    @MainActor
+    func testResetsStageWhenContentChangesSoItsReprocessed() throws {
+        let container = try KnowledgeSchema.makeContainer(inMemory: true)
+        let context = container.mainContext
+
+        let existing = try FetchedPageImport.save(page(text: "Short teaser."), url: url, localOnly: false,
+                                                   context: context, now: now)
+        // Simulate a fully processed article: chunked, embedded, linked.
+        existing.stage = .linked
+        try context.save()
+
+        let updated = try FetchedPageImport.save(page(text: "Much longer text than the teaser, updated on re-fetch."),
+                                                  url: url, localOnly: false, context: context, now: now + 60)
+        XCTAssertEqual(updated.id, existing.id)
+        XCTAssertEqual(updated.stage, .cleaned,
+                       "content changed underneath already-linked chunks; the pipeline must redo them")
+        XCTAssertTrue(updated.cleanedText.contains("Much longer text"))
+    }
+
+    @MainActor
     func testDoesNotCollideWithAnotherManualSource() throws {
         let container = try KnowledgeSchema.makeContainer(inMemory: true)
         let context = container.mainContext

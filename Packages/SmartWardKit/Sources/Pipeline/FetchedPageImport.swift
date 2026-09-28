@@ -20,21 +20,34 @@ public enum FetchedPageImport {
     @discardableResult
     public static func save(_ page: ExtractedArticle, url: URL, localOnly: Bool,
                             context: ModelContext, now: Date = Date()) throws -> Article {
-        let canonical = CanonicalURL.canonicalize(page.canonicalURL ?? url.absoluteString) ?? url.absoluteString
+        // Keyed by the URL you actually approved, never `page.canonicalURL`:
+        // that field comes from the fetched page itself, so a page could
+        // otherwise claim to be the canonical form of an unrelated article
+        // already in the library and, if its text were longer, overwrite it.
+        let canonical = CanonicalURL.canonicalize(url.absoluteString) ?? url.absoluteString
         if let existing = try context.fetch(FetchDescriptor<Article>(
             predicate: #Predicate { $0.canonicalURL == canonical })).first {
             existing.isRead = false
             existing.ingestedAt = now
             existing.localOnly = existing.localOnly || localOnly
-            if page.text.count > existing.cleanedText.count {
+            let wasTriagedOut = existing.stage == .triagedOut
+            if wasTriagedOut {
+                // You asked for it directly: triage's verdict no longer applies.
+                existing.relevance = 1
+                existing.relevanceReason = "You asked to read this"
+            }
+            let contentGrew = page.text.count > existing.cleanedText.count
+            if contentGrew {
                 existing.cleanedText = page.text
                 existing.summary = String(page.text.prefix(500))
             }
-            if existing.stage == .triagedOut {
-                // You asked for it directly: triage's verdict no longer applies.
+            if wasTriagedOut || contentGrew {
+                // Either moves it out of a stage the pipeline won't revisit
+                // on its own: triagedOut is a dead end, and whatever was
+                // chunked, embedded and extracted from the old text is now
+                // stale. Re-running from .cleaned is exactly what a watched
+                // page's own content change does (FeedIngest.apply).
                 existing.stage = .cleaned
-                existing.relevance = 1
-                existing.relevanceReason = "You asked to read this"
             }
             try context.save()
             return existing
