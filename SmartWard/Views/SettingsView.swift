@@ -33,6 +33,7 @@ struct SettingsView: View {
                 KnowledgeGraphSettingsSection()
                 GitHubSettingsSection()
                 ActionApprovalSettingsSection()
+                VoiceSettingsSection()
                 SecuritySettingsSection()
                 Section {
                     Button("Run setup again") { onboardingCompleted = false }

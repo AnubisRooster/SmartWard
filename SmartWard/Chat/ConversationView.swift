@@ -4,12 +4,16 @@ import KnowledgeStore
 import Pipeline
 import BYOKLLMKit
 import StrategistCore
+import VoiceLoopKit
 
 struct ConversationView: View {
     let conversation: Conversation
 
     @Environment(\.modelContext) private var context
     @State private var controller = ChatController()
+    @StateObject private var voice = VoiceConversationController()
+    @AppStorage(ActionTools.autoApproveKey) private var autoApprove = false
+    @State private var showingVoiceGate = false
     @FocusState private var composerFocused: Bool
 
     private var messages: [Message] {
@@ -72,7 +76,18 @@ struct ConversationView: View {
         .safeAreaInset(edge: .bottom) { composer }
         .navigationTitle(conversation.title.isEmpty ? "New chat" : conversation.title)
         .navigationBarTitleDisplayMode(.inline)
-        .onDisappear { controller.resolve(approved: false) }
+        .onDisappear {
+            controller.resolve(approved: false)
+            voice.stop()
+        }
+        .onChange(of: voice.pendingUtterance) { _, utterance in
+            guard let utterance else { return }
+            Task {
+                controller.draft = utterance.text
+                let reply = await controller.send(in: conversation, context: context)
+                voice.deliverResponse(reply)
+            }
+        }
         .navigationDestination(for: Article.self) { article in
             ArticleReaderView(article: article)
         }
@@ -88,22 +103,91 @@ struct ConversationView: View {
     }
 
     private var composer: some View {
-        HStack(alignment: .bottom, spacing: 8) {
-            TextField("Message", text: $controller.draft, axis: .vertical)
-                .lineLimit(1...6)
-                .textFieldStyle(.roundedBorder)
-                .focused($composerFocused)
-            Button {
-                Task { await controller.send(in: conversation, context: context) }
-            } label: {
-                Image(systemName: "arrow.up.circle.fill").font(.title2)
+        VStack(alignment: .leading, spacing: 4) {
+            if voice.isActive {
+                voiceStatus
             }
-            .disabled(controller.isRunning || controller.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            .accessibilityLabel("Send")
+            HStack(alignment: .bottom, spacing: 8) {
+                TextField("Message", text: $controller.draft, axis: .vertical)
+                    .lineLimit(1...6)
+                    .textFieldStyle(.roundedBorder)
+                    .focused($composerFocused)
+                    .disabled(voice.isActive)
+                Button(action: toggleVoice) {
+                    Image(systemName: voice.isActive ? "mic.fill" : "mic")
+                        .font(.title2)
+                        .foregroundStyle(voice.isActive ? Color.accentColor : Color.primary)
+                }
+                .accessibilityLabel(voice.isActive ? "Stop voice conversation" : "Start voice conversation")
+                Button {
+                    Task { await controller.send(in: conversation, context: context) }
+                } label: {
+                    Image(systemName: "arrow.up.circle.fill").font(.title2)
+                }
+                .disabled(controller.isRunning || voice.isActive
+                          || controller.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .accessibilityLabel("Send")
+            }
         }
         .padding(.horizontal)
         .padding(.vertical, 8)
         .background(.bar)
+        .alert("Turn on automatic approval?", isPresented: $showingVoiceGate) {
+            Button("Turn On & Start") {
+                autoApprove = true
+                startVoice()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("A voice conversation needs Settings → \"Approve fetches and new sources automatically\" turned on, so the strategist is never left waiting for a tap you can't make hands-free.")
+        }
+        .alert("Voice trouble", isPresented: Binding(get: { voice.errorMessage != nil },
+                                                      set: { if !$0 { voice.errorMessage = nil } })) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(voice.errorMessage ?? "")
+        }
+    }
+
+    private var voiceStatus: some View {
+        HStack(spacing: 6) {
+            Image(systemName: voice.phase == .speaking ? "speaker.wave.2.fill" : "waveform")
+                .foregroundStyle(.secondary)
+            Text(voiceStatusText)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+            Spacer()
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    private var voiceStatusText: String {
+        switch voice.phase {
+        case .idle: return ""
+        case .listening: return voice.partialText.isEmpty ? "Listening…" : voice.partialText
+        case .thinking: return "Thinking…"
+        case .speaking: return "Speaking…"
+        }
+    }
+
+    private func toggleVoice() {
+        if voice.isActive {
+            voice.stop()
+        } else if autoApprove {
+            startVoice()
+        } else {
+            showingVoiceGate = true
+        }
+    }
+
+    /// `record_strategy_item` (saving a decision/open item) always asks
+    /// regardless of this setting — a project-scoped voice conversation can
+    /// still stall on that one card. Not solved here: out of scope for what
+    /// auto-approve covers (PLAN §5.7, ActionTools.autoApprovableTools).
+    private func startVoice() {
+        voice.config = VoiceSettings.current
+        voice.start()
     }
 }
 
