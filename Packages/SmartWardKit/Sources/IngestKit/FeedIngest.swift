@@ -128,9 +128,17 @@ public enum FeedIngest {
         return true
     }
 
+    /// Whether `error` is a fetch that was cancelled (the refresh was
+    /// stopped): that says nothing about the source.
+    public static func isCancellation(_ error: Error) -> Bool {
+        error is CancellationError || (error as? URLError)?.code == .cancelled
+    }
+
     /// Records a failed fetch on the source so the Sources list can show it.
+    /// A cancelled fetch isn't recorded: the source did nothing wrong.
     @MainActor
     public static func recordFailure(_ error: Error, on source: Source, context: ModelContext, now: Date = Date()) {
+        guard !isCancellation(error) else { return }
         source.lastFetchedAt = now
         source.lastError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
         try? context.save()

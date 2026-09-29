@@ -22,16 +22,28 @@ final class PipelineController {
     private(set) var isRunning = false
     private(set) var lastReport: PipelineRunner.Report?
     private(set) var unavailableReason: String?
+    /// Articles still waiting to be indexed, as of the last run or `refreshWaiting`.
+    private(set) var waiting = 0
 
     var strength: Triage.Strength {
         Triage.Strength(rawValue: UserDefaults.standard.string(forKey: Self.strengthKey) ?? "") ?? .balanced
     }
 
-    func process(context: ModelContext, budget: TimeInterval = foregroundBudget) async {
-        guard !isRunning else { return }
+    /// Re-counts the articles waiting to be indexed, without running anything.
+    func refreshWaiting(context: ModelContext) {
+        waiting = (try? PipelineRunner.waitingCount(context: context,
+                                                    includesLinking: ExtractionSettings.tiers() != nil)) ?? waiting
+    }
+
+    /// - Parameter progress: steps done and total, after each step (see `PipelineRunner.run`).
+    /// - Returns: what this run did, or `nil` when it didn't run.
+    @discardableResult
+    func process(context: ModelContext, budget: TimeInterval = foregroundBudget,
+                 progress: ((_ completed: Int, _ total: Int) -> Void)? = nil) async -> PipelineRunner.Report? {
+        guard !isRunning else { return nil }
         guard let embedder = EmbeddingModel.appleSentence() else {
             unavailableReason = "On-device sentence embeddings aren't available on this device, so new items can't be indexed yet."
-            return
+            return nil
         }
         unavailableReason = nil
         isRunning = true
@@ -44,10 +56,15 @@ final class PipelineController {
                                     extraction: ExtractionSettings.tiers(),
                                     budget: BudgetSettings.current)
         do {
-            lastReport = try await runner.run(context: context, until: Date().addingTimeInterval(budget))
+            let report = try await runner.run(context: context, until: Date().addingTimeInterval(budget),
+                                              progress: progress)
+            lastReport = report
+            waiting = report.remaining
             SearchController.shared.markStale()
+            return report
         } catch {
             unavailableReason = error.localizedDescription
+            return nil
         }
     }
 }

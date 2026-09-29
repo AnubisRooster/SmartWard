@@ -118,13 +118,41 @@ public final class PipelineRunner {
         self.now = now
     }
 
-    private var stages: [ArticleStage] {
-        extraction == nil ? [.fetched, .cleaned, .triaged] : [.fetched, .cleaned, .triaged, .embedded]
+    /// The stages a run works through: embedding is the last one unless
+    /// extraction is configured, which continues to `linked`.
+    static func stages(includesLinking: Bool) -> [ArticleStage] {
+        includesLinking ? [.fetched, .cleaned, .triaged, .embedded] : [.fetched, .cleaned, .triaged]
+    }
+
+    private var stages: [ArticleStage] { Self.stages(includesLinking: extraction != nil) }
+
+    /// How many articles are still in a stage a run works through: what
+    /// `Report.remaining` says after a run, without running anything.
+    public static func waitingCount(context: ModelContext, includesLinking: Bool) throws -> Int {
+        try stages(includesLinking: includesLinking).reduce(0) { total, stage in
+            let raw = stage.rawValue
+            return total + (try context.fetchCount(FetchDescriptor<Article>(predicate: #Predicate { $0.stageRaw == raw })))
+        }
+    }
+
+    /// Steps (one per article moved on, or turn indexed) an article at
+    /// `stage` still needs: triage, embedding, and linking when extraction is on.
+    static func steps(from stage: ArticleStage, includesLinking: Bool) -> Int {
+        switch stage {
+        case .fetched, .cleaned: return includesLinking ? 3 : 2
+        case .triaged: return includesLinking ? 2 : 1
+        case .embedded: return includesLinking ? 1 : 0
+        default: return 0
+        }
     }
 
     /// Works through the backlog until it's empty, `deadline` passes, or the
     /// task is cancelled.
-    public func run(context: ModelContext, until deadline: Date) async throws -> Report {
+    /// - Parameter progress: called after each step is saved, with the steps
+    ///   done and the total when the run started. Articles that turn out to
+    ///   be off-topic take fewer steps, so the last call can fall short of the total.
+    public func run(context: ModelContext, until deadline: Date,
+                    progress: ((_ completed: Int, _ total: Int) -> Void)? = nil) async throws -> Report {
         var report = Report()
         let model = try await InterestModel.build(context: context, embedder: embedder)
         let indexer = ArticleIndexer(embedder: embedder)
@@ -138,6 +166,24 @@ public final class PipelineRunner {
             graph?.budget = budget
             for link in try context.fetch(FetchDescriptor<ProjectLink>()) {
                 if let sourceID = link.sourceID { links[sourceID] = link }
+            }
+        }
+
+        var total = 0
+        var completed = 0
+        if progress != nil {
+            let linking = extraction != nil
+            for stage in stages {
+                let raw = stage.rawValue
+                let count = try context.fetchCount(FetchDescriptor<Article>(predicate: #Predicate { $0.stageRaw == raw }))
+                total += count * Self.steps(from: stage, includesLinking: linking)
+            }
+            if graph != nil {
+                let settled = now().addingTimeInterval(-Self.turnSettleTime)
+                total += try context.fetchCount(FetchDescriptor<Message>(predicate: #Predicate { message in
+                    message.indexedAt == nil && message.createdAt < settled
+                        && (message.role == "user" || message.role == "assistant")
+                }))
             }
         }
 
@@ -155,6 +201,8 @@ public final class PipelineRunner {
                     skipped.insert(turn.id)
                 }
                 try context.save()
+                completed += 1
+                progress?(min(completed, total), total)
                 continue
             }
 
@@ -186,12 +234,11 @@ public final class PipelineRunner {
                 report.embedded += 1
             }
             try context.save()
+            completed += 1
+            progress?(min(completed, total), total)
         }
 
-        report.remaining = try stages.reduce(0) { total, stage in
-            let raw = stage.rawValue
-            return total + (try context.fetchCount(FetchDescriptor<Article>(predicate: #Predicate { $0.stageRaw == raw })))
-        }
+        report.remaining = try Self.waitingCount(context: context, includesLinking: extraction != nil)
         return report
     }
 

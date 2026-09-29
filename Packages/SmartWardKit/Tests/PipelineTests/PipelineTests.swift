@@ -228,6 +228,35 @@ final class PipelineRunnerTests: XCTestCase {
     }
 
     @MainActor
+    func testReportsProgressAndCountsWhatIsWaiting() async throws {
+        let (container, context) = try makeStore()
+        _ = container
+        for index in 0..<3 {
+            _ = article("https://blog.example/\(index)", "Coding agents \(index)", text: longText,
+                        stage: .cleaned, context: context)
+        }
+        _ = article("https://blog.example/ready", "Coding agents ready", text: longText,
+                    stage: .triaged, context: context)
+        try context.save()
+        XCTAssertEqual(try PipelineRunner.waitingCount(context: context, includesLinking: false), 4)
+
+        var done: [Int] = []
+        var totals: [Int] = []
+        let runner = PipelineRunner(embedder: fakeModel, fullText: nil, now: { self.now })
+        let report = try await runner.run(context: context, until: now + 60) { completed, total in
+            done.append(completed)
+            totals.append(total)
+        }
+
+        // Three articles need triage then embedding, one only embedding.
+        XCTAssertEqual(totals, Array(repeating: 7, count: 7), "the total is known when the run starts")
+        XCTAssertEqual(done, Array(1...7), "one step at a time, never backwards")
+        XCTAssertEqual(report.embedded, 4)
+        XCTAssertEqual(report.remaining, 0)
+        XCTAssertEqual(try PipelineRunner.waitingCount(context: context, includesLinking: false), 0)
+    }
+
+    @MainActor
     func testJudgeDecidesBorderlineItemsAndOffDisablesFiltering() async throws {
         let (container, context) = try makeStore()
         _ = container
