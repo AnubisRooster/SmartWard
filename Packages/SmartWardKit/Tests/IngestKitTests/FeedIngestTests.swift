@@ -142,6 +142,23 @@ final class FeedIngestTests: XCTestCase {
     }
 
     @MainActor
+    func testACancelledFetchIsNotTheSourcesFailure() throws {
+        let container = try KnowledgeSchema.makeContainer(inMemory: true)
+        let context = container.mainContext
+        let source = Source(kind: "rss", url: "https://x.example")
+        context.insert(source)
+        FeedIngest.recordFailure(CancellationError(), on: source, context: context, now: now)
+        FeedIngest.recordFailure(URLError(.cancelled), on: source, context: context, now: now)
+        XCTAssertNil(source.lastError, "stopping a refresh doesn't mark its sources as broken")
+        XCTAssertNil(source.lastFetchedAt)
+
+        XCTAssertTrue(FeedIngest.isCancellation(CancellationError()))
+        XCTAssertTrue(FeedIngest.isCancellation(URLError(.cancelled)))
+        XCTAssertFalse(FeedIngest.isCancellation(URLError(.timedOut)))
+        XCTAssertFalse(FeedIngest.isCancellation(IngestError.notAFeed))
+    }
+
+    @MainActor
     func testSourceKindFallsBackAndKnowsWhatIsPolled() throws {
         let container = try KnowledgeSchema.makeContainer(inMemory: true)
         _ = container.mainContext

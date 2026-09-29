@@ -138,6 +138,14 @@ struct ReadingView: View {
                     .foregroundStyle(.secondary)
                     .listRowSeparator(.hidden)
             }
+            if pipeline.waiting > 0 {
+                Label(pipeline.waiting == 1 ? "1 article waiting to be indexed"
+                                            : "\(pipeline.waiting) articles waiting to be indexed",
+                      systemImage: "clock")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .listRowSeparator(.hidden)
+            }
         }
         .listStyle(.plain)
         .safeAreaInset(edge: .top) {
@@ -153,6 +161,7 @@ struct ReadingView: View {
         .refreshable {
             await ingest.refreshAll(context: context)
         }
+        .task { pipeline.refreshWaiting(context: context) }
     }
 
     @ViewBuilder
