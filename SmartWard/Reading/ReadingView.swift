@@ -61,6 +61,17 @@ struct ReadingView: View {
         sources.contains { $0.isEnabled && $0.sourceKind.isPolled }
     }
 
+    /// What's running now and how far along it is. Indexing shows once its
+    /// work is counted, so a quick run with nothing to do doesn't flash the
+    /// bar; right after a fetch, while indexing gets going, the bar has no
+    /// percentage yet.
+    private var activity: (label: String, progress: StepProgress?)? {
+        if let fetch = ingest.fetchProgress { return ("Refreshing sources", fetch) }
+        if let index = pipeline.indexProgress, index.isDeterminate { return ("Indexing articles", index) }
+        if ingest.isRefreshing { return ("Indexing articles", nil) }
+        return nil
+    }
+
     var body: some View {
         NavigationStack {
             Group {
@@ -150,13 +161,19 @@ struct ReadingView: View {
         }
         .listStyle(.plain)
         .safeAreaInset(edge: .top) {
-            Picker("Show", selection: $filter) {
-                ForEach(Filter.allCases) { Text($0.rawValue).tag($0) }
+            VStack(spacing: 0) {
+                Picker("Show", selection: $filter) {
+                    ForEach(Filter.allCases) { Text($0.rawValue).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                .padding(.horizontal)
+                .padding(.bottom, 8)
+                if let activity {
+                    ActivityBar(label: activity.label, progress: activity.progress)
+                }
             }
-            .pickerStyle(.segmented)
-            .padding(.horizontal)
-            .padding(.bottom, 8)
             .background(.bar)
+            .animation(.default, value: activity != nil)
         }
         .overlay { emptyState }
         .refreshable {
@@ -256,5 +273,36 @@ struct ArticleRow: View {
             }
         }
         .padding(.vertical, 2)
+    }
+}
+
+/// A labelled bar with its percentage while sources refresh or articles are
+/// indexed; a moving bar with no percentage while the total isn't known.
+private struct ActivityBar: View {
+    let label: String
+    let progress: StepProgress?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text(label)
+                Spacer(minLength: 4)
+                if let progress, progress.isDeterminate {
+                    Text("\(progress.percent)%").monospacedDigit()
+                }
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            if let progress, progress.isDeterminate {
+                ProgressView(value: Double(progress.done), total: Double(progress.total))
+            } else {
+                ProgressView().progressViewStyle(.linear)
+            }
+        }
+        .padding(.horizontal)
+        .padding(.bottom, 8)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(label)
+        .accessibilityValue(progress.map { $0.isDeterminate ? "\($0.percent) percent" : "In progress" } ?? "In progress")
     }
 }

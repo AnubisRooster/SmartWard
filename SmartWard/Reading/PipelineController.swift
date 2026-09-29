@@ -22,6 +22,9 @@ final class PipelineController {
     private(set) var isRunning = false
     private(set) var lastReport: PipelineRunner.Report?
     private(set) var unavailableReason: String?
+    /// How far the current run is, or `nil` when none is running. Its total
+    /// is 0 (unknown) until the run has counted its work.
+    private(set) var indexProgress: StepProgress?
     /// Articles still waiting to be indexed, as of the last run or `refreshWaiting`.
     private(set) var waiting = 0
 
@@ -47,7 +50,11 @@ final class PipelineController {
         }
         unavailableReason = nil
         isRunning = true
-        defer { isRunning = false }
+        indexProgress = StepProgress(done: 0, total: 0)
+        defer {
+            isRunning = false
+            indexProgress = nil
+        }
 
         let runner = PipelineRunner(embedder: embedder,
                                     fullText: IngestController.shared.fetcher,
@@ -56,8 +63,10 @@ final class PipelineController {
                                     extraction: ExtractionSettings.tiers(),
                                     budget: BudgetSettings.current)
         do {
-            let report = try await runner.run(context: context, until: Date().addingTimeInterval(budget),
-                                              progress: progress)
+            let report = try await runner.run(context: context, until: Date().addingTimeInterval(budget)) { completed, total in
+                self.indexProgress = StepProgress(done: completed, total: total)
+                progress?(completed, total)
+            }
             lastReport = report
             waiting = report.remaining
             SearchController.shared.markStale()
