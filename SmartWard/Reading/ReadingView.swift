@@ -1,6 +1,7 @@
 import SwiftUI
 import SwiftData
 import KnowledgeStore
+import Pipeline
 
 /// Everything fetched from followed sources, newest first. Linked-repo docs
 /// are project context, not reading, so they aren't listed here.
@@ -202,10 +203,13 @@ struct ReadingView: View {
 struct ArticleRow: View {
     let article: Article
 
+    private var relevancePercent: Int? { Triage.displayPercent(for: article) }
+
     var body: some View {
         content
             .accessibilityElement(children: .combine)
-            .accessibilityValue([article.isRead ? nil : "Unread", article.isStarred ? "Starred" : nil]
+            .accessibilityValue([article.isRead ? nil : "Unread", article.isStarred ? "Starred" : nil,
+                                 relevancePercent.map { "Relevance \($0) percent" }]
                 .compactMap { $0 }.joined(separator: ", "))
     }
 
@@ -240,6 +244,15 @@ struct ArticleRow: View {
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
+            }
+            if let percent = relevancePercent {
+                HStack {
+                    Spacer(minLength: 0)
+                    Text("Relevance \(percent)%")
+                        .font(.caption)
+                        .monospacedDigit()
+                        .foregroundStyle(.secondary)
+                }
             }
         }
         .padding(.vertical, 2)

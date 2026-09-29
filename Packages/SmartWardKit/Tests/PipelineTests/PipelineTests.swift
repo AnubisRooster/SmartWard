@@ -324,3 +324,41 @@ final class PipelineRunnerTests: XCTestCase {
         XCTAssertEqual(doc.chunks?.map(\.ordinal).sorted(), Array(0..<second))
     }
 }
+
+final class TriageDisplayTests: XCTestCase {
+    @MainActor
+    func testACardShowsTheScoreOnlyWhereTriageMeasuredIt() throws {
+        let container = try KnowledgeSchema.makeContainer(inMemory: true)
+        let context = container.mainContext
+        let feed = Source(kind: "rss", url: "https://feed.example")
+        let shared = Source(kind: "manual", url: "")
+        let repo = Source(kind: "github_repo", url: "https://github.com/me/x")
+        for source in [feed, shared, repo] { context.insert(source) }
+
+        func article(_ number: Int, _ stage: ArticleStage, _ relevance: Double,
+                     reason: String = "Matches agents", source: Source) -> Article {
+            let article = Article(canonicalURL: "https://x.example/\(number)", title: "t\(number)")
+            context.insert(article)
+            article.source = source
+            article.stage = stage
+            article.relevance = relevance
+            article.relevanceReason = reason
+            return article
+        }
+
+        XCTAssertEqual(Triage.displayPercent(for: article(1, .embedded, 0.347, source: feed)), 35, "rounded")
+        XCTAssertEqual(Triage.displayPercent(for: article(2, .triaged, 0.9, source: feed)), 90)
+        XCTAssertEqual(Triage.displayPercent(for: article(3, .triagedOut, 0.1, source: feed)), 10,
+                       "off-topic items show why they were filtered")
+        XCTAssertEqual(Triage.displayPercent(for: article(4, .linked, 0.5, source: feed)), 50,
+                       "a neutral-looking score with a reason is a real score")
+
+        XCTAssertNil(Triage.displayPercent(for: article(5, .fetched, 0, reason: "", source: feed)), "not scored yet")
+        XCTAssertNil(Triage.displayPercent(for: article(6, .cleaned, 0, reason: "", source: feed)), "not scored yet")
+        XCTAssertNil(Triage.displayPercent(for: article(7, .embedded, Triage.neutralScore, reason: "", source: feed)),
+                     "nothing to compare against: neutral isn't a measurement")
+        XCTAssertNil(Triage.displayPercent(for: article(8, .embedded, 1, reason: "You shared this", source: shared)),
+                     "relevant by definition")
+        XCTAssertNil(Triage.displayPercent(for: article(9, .embedded, 1, reason: "From a linked repo", source: repo)))
+    }
+}

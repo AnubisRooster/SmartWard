@@ -194,6 +194,25 @@ public enum Triage {
     public static func triageText(title: String, summary: String) -> String {
         summary.isEmpty ? title : "\(title). \(summary.prefix(800))"
     }
+
+    /// The relevance to show on an article's card, as a whole percentage, or
+    /// `nil` when there is no real score to show:
+    /// - triage hasn't scored it yet (still `fetched` or `cleaned`);
+    /// - it was relevant by definition (shared by you, from a linked repo);
+    /// - it scored neutral because there was nothing to compare against (no
+    ///   interests yet, or text the embedder can't read).
+    public static func displayPercent(for article: Article) -> Int? {
+        switch article.source?.sourceKind {
+        case .githubRepo?, .manual?: return nil
+        default: break
+        }
+        switch article.stage {
+        case .fetched, .cleaned, .failed: return nil
+        default: break
+        }
+        if article.relevance == neutralScore, article.relevanceReason.isEmpty { return nil }
+        return Int((article.relevance * 100).rounded())
+    }
 }
 
 /// An optional second opinion for borderline items (T1): Apple Foundation
