@@ -102,7 +102,10 @@ struct SourceRow: View {
                 if ingest.refreshingSourceIDs.contains(source.id) {
                     Text("Refreshing…")
                 } else if let error = source.lastError {
-                    Text(error).foregroundStyle(.red)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(SourceHealth.split(error).message).foregroundStyle(.red)
+                        if let hint = SourceHealth.split(error).hint { Text(hint) }
+                    }
                 } else if let fetched = source.lastFetchedAt {
                     Text("\(source.sourceKind.displayName) · updated \(fetched, format: .relative(presentation: .named))")
                 } else {
@@ -141,7 +144,12 @@ struct SourceDetailView: View {
                 }
                 LabeledContent("Articles", value: "\(source.articles?.count ?? 0)")
                 if let error = source.lastError {
-                    Text(error).foregroundStyle(.red)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(SourceHealth.split(error).message).foregroundStyle(.red)
+                        if let hint = SourceHealth.split(error).hint {
+                            Text(hint).font(.footnote).foregroundStyle(.secondary)
+                        }
+                    }
                 }
                 Button {
                     Task { await ingest.refresh([source], context: context) }

@@ -137,7 +137,8 @@ final class FeedIngestTests: XCTestCase {
         let source = Source(kind: "rss", url: "https://x.example")
         context.insert(source)
         FeedIngest.recordFailure(IngestError.notAFeed, on: source, context: context, now: now)
-        XCTAssertEqual(source.lastError, IngestError.notAFeed.errorDescription)
+        let expected = "\(IngestError.notAFeed.errorDescription ?? "")\n\(IngestError.notAFeed.recoverySuggestion ?? "")"
+        XCTAssertEqual(source.lastError, expected, "the message, then what to do about it")
         XCTAssertEqual(source.lastFetchedAt, now)
     }
 

@@ -113,6 +113,9 @@ public enum IngestError: LocalizedError, Equatable, Sendable {
     case tooLarge
     case notAFeed
     case invalidResponse
+    /// The address redirects somewhere SmartWard won't follow: a host that
+    /// isn't a public website (this device, the local network).
+    case redirectedAway(host: String?)
 
     public var errorDescription: String? {
         switch self {
@@ -130,6 +133,39 @@ public enum IngestError: LocalizedError, Equatable, Sendable {
             return "No RSS or Atom feed was found at that address."
         case .invalidResponse:
             return "The server returned something SmartWard couldn't read."
+        case .redirectedAway(let host):
+            if let host {
+                return "The address redirects to \(host), which SmartWard won't follow because it isn't a public website."
+            }
+            return "The address redirects somewhere SmartWard won't follow."
+        }
+    }
+
+    /// What to do about it, in plain words.
+    public var recoverySuggestion: String? {
+        switch self {
+        case .invalidURL:
+            return "Check the address for a typo."
+        case .disallowedByRobots:
+            return "The site asks automated readers to stay out. Follow its feed instead, or remove this source."
+        case .backingOff:
+            return "Nothing to do: SmartWard tries again on its own."
+        case .http(let status):
+            switch status {
+            case 404, 410: return "The feed may have moved or been removed. Check the address, or remove this source."
+            case 401, 403: return "The site refuses SmartWard or wants a login. Try the site's public feed, or remove this source."
+            case 429: return "The site asked SmartWard to slow down. It tries again on its own."
+            case 500...599: return "The site is having trouble. SmartWard tries again on the next refresh."
+            default: return "Check the address, or try again later."
+            }
+        case .tooLarge:
+            return "The response is bigger than SmartWard reads. Use a smaller feed for this site."
+        case .notAFeed:
+            return "That page doesn't offer an RSS or Atom feed. Look for a feed link on the site and use that address instead."
+        case .invalidResponse:
+            return "Check that the address is a feed, not a web page or a download."
+        case .redirectedAway:
+            return "Open the address in a browser to see where it goes. If that's the feed you want, add that address instead."
         }
     }
 }

@@ -140,7 +140,7 @@ public enum FeedIngest {
     public static func recordFailure(_ error: Error, on source: Source, context: ModelContext, now: Date = Date()) {
         guard !isCancellation(error) else { return }
         source.lastFetchedAt = now
-        source.lastError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+        source.lastError = SourceHealth.stored(error)
         try? context.save()
     }
 
