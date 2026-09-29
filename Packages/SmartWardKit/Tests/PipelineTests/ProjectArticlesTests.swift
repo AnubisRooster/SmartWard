@@ -9,6 +9,8 @@ final class ProjectArticlesTests: XCTestCase {
 
     @MainActor
     private struct World {
+        /// Kept so the store outlives the context, which crashes without it.
+        let container: ModelContainer
         let context: ModelContext
         let project: Project
         let feed: Source
@@ -21,7 +23,8 @@ final class ProjectArticlesTests: XCTestCase {
 
     @MainActor
     private func makeWorld() throws -> World {
-        let context = try KnowledgeSchema.makeContainer(inMemory: true).mainContext
+        let container = try KnowledgeSchema.makeContainer(inMemory: true)
+        let context = container.mainContext
         let project = Project(name: "Inference stack")
         let feed = Source(kind: "rss", url: "https://blog.example/feed", title: "Blog")
         let repo = Source(kind: "github_repo", url: "https://github.com/me/stack", title: "me/stack")
@@ -46,7 +49,7 @@ final class ProjectArticlesTests: XCTestCase {
         context.insert(readme)
         mention([rag, agents], in: readme, at: now)
         try context.save()
-        return World(context: context, project: project, feed: feed, repo: repo,
+        return World(container: container, context: context, project: project, feed: feed, repo: repo,
                      vllm: vllm, rag: rag, agents: agents, unrelated: unrelated)
     }
 
@@ -76,11 +79,16 @@ final class ProjectArticlesTests: XCTestCase {
         return article
     }
 
+    /// Saves first so the fetches see everything the test inserted.
     @MainActor
-    private func titles(_ world: World, limit: Int = ProjectArticles.defaultLimit) throws -> [String] {
+    private func matches(_ world: World, limit: Int = ProjectArticles.defaultLimit) throws -> [ProjectArticles.Match] {
         try world.context.save()
         return try ProjectArticles.matches(for: world.project, context: world.context, limit: limit, now: now)
-            .map(\.article.title)
+    }
+
+    @MainActor
+    private func titles(_ world: World, limit: Int = ProjectArticles.defaultLimit) throws -> [String] {
+        try matches(world, limit: limit).map(\.article.title)
     }
 
     @MainActor
@@ -91,7 +99,7 @@ final class ProjectArticlesTests: XCTestCase {
         _ = reading(world, "Elsewhere", themes: [world.unrelated])
 
         XCTAssertEqual(try titles(world), ["Both themes"])
-        let match = try XCTUnwrap(ProjectArticles.matches(for: world.project, context: world.context, now: now).first)
+        let match = try XCTUnwrap(matches(world).first)
         XCTAssertEqual(match.reasons, ["Covers Agents, RAG"])
     }
 
@@ -101,11 +109,11 @@ final class ProjectArticlesTests: XCTestCase {
         _ = reading(world, "Pinned only", themes: [world.vllm])
         _ = reading(world, "Pinned and others", themes: [world.agents, world.vllm, world.rag])
 
-        let matches = try ProjectArticles.matches(for: world.project, context: world.context, now: now)
-        let byTitle = Dictionary(uniqueKeysWithValues: matches.map { ($0.article.title, $0) })
+        let listed = try matches(world)
+        let byTitle = Dictionary(uniqueKeysWithValues: listed.map { ($0.article.title, $0) })
         XCTAssertEqual(byTitle["Pinned only"]?.reasons, ["Covers vLLM"])
         XCTAssertEqual(byTitle["Pinned and others"]?.reasons, ["Covers vLLM, Agents, RAG"])
-        XCTAssertEqual(matches.first?.article.title, "Pinned and others", "more shared themes rank higher")
+        XCTAssertEqual(listed.first?.article.title, "Pinned and others", "more shared themes rank higher")
     }
 
     @MainActor
@@ -115,10 +123,10 @@ final class ProjectArticlesTests: XCTestCase {
         let shared = reading(world, "Shared by me", stage: .triagedOut)
         shared.projectID = world.project.id
 
-        let matches = try ProjectArticles.matches(for: world.project, context: world.context, now: now)
-        XCTAssertEqual(matches.map(\.article.title), ["Shared by me", "Strong overlap"],
+        let listed = try matches(world)
+        XCTAssertEqual(listed.map(\.article.title), ["Shared by me", "Strong overlap"],
                        "an article you shared is listed even when triage filtered it out")
-        XCTAssertEqual(matches.first?.reasons, ["Shared to this project"])
+        XCTAssertEqual(listed.first?.reasons, ["Shared to this project"])
     }
 
     @MainActor
@@ -141,8 +149,8 @@ final class ProjectArticlesTests: XCTestCase {
         _ = reading(world, "Serving with vLLM", themes: [world.vllm], summary: "How vLLM batches requests")
         _ = reading(world, "vllmx rewrite", stage: .embedded)
 
-        let matches = try ProjectArticles.matches(for: world.project, context: world.context, now: now)
-        let byTitle = Dictionary(uniqueKeysWithValues: matches.map { ($0.article.title, $0) })
+        let listed = try matches(world)
+        let byTitle = Dictionary(uniqueKeysWithValues: listed.map { ($0.article.title, $0) })
         XCTAssertEqual(byTitle["vLLM 0.9 released"]?.reasons, ["Mentions vLLM"])
         XCTAssertEqual(byTitle["Serving with vLLM"]?.reasons, ["Covers vLLM"],
                        "extraction already found it, so it isn't listed twice")
@@ -165,7 +173,8 @@ final class ProjectArticlesTests: XCTestCase {
 
     @MainActor
     func testAProjectWithNothingLinkedListsNothing() throws {
-        let context = try KnowledgeSchema.makeContainer(inMemory: true).mainContext
+        let container = try KnowledgeSchema.makeContainer(inMemory: true)
+        let context = container.mainContext
         let project = Project(name: "Empty")
         let feed = Source(kind: "rss", url: "https://blog.example/feed")
         context.insert(project)
@@ -176,6 +185,8 @@ final class ProjectArticlesTests: XCTestCase {
         context.insert(article)
         try context.save()
 
-        XCTAssertTrue(try ProjectArticles.matches(for: project, context: context, now: now).isEmpty)
+        try withExtendedLifetime(container) {
+            XCTAssertTrue(try ProjectArticles.matches(for: project, context: context, now: now).isEmpty)
+        }
     }
 }
