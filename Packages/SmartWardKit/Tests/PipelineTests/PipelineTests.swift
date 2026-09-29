@@ -249,8 +249,8 @@ final class PipelineRunnerTests: XCTestCase {
         }
 
         // Three articles need triage then embedding, one only embedding.
-        XCTAssertEqual(totals, Array(repeating: 7, count: 7), "the total is known when the run starts")
-        XCTAssertEqual(done, Array(1...7), "one step at a time, never backwards")
+        XCTAssertEqual(totals, Array(repeating: 7, count: 8), "the total is known when the run starts")
+        XCTAssertEqual(done, Array(0...7), "reported at the start, then one step at a time, never backwards")
         XCTAssertEqual(report.embedded, 4)
         XCTAssertEqual(report.remaining, 0)
         XCTAssertEqual(try PipelineRunner.waitingCount(context: context, includesLinking: false), 0)

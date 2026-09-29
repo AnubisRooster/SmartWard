@@ -148,9 +148,10 @@ public final class PipelineRunner {
 
     /// Works through the backlog until it's empty, `deadline` passes, or the
     /// task is cancelled.
-    /// - Parameter progress: called after each step is saved, with the steps
-    ///   done and the total when the run started. Articles that turn out to
-    ///   be off-topic take fewer steps, so the last call can fall short of the total.
+    /// - Parameter progress: called once when the run starts with work to do
+    ///   (0 done), then after each step is saved, with the steps done and the
+    ///   total when the run started. Articles that turn out to be off-topic
+    ///   take fewer steps, so the last call can fall short of the total.
     public func run(context: ModelContext, until deadline: Date,
                     progress: ((_ completed: Int, _ total: Int) -> Void)? = nil) async throws -> Report {
         var report = Report()
@@ -186,6 +187,8 @@ public final class PipelineRunner {
                 }))
             }
         }
+
+        if total > 0 { progress?(0, total) }
 
         while now() < deadline, !Task.isCancelled {
             if let graph, let turn = try nextTurn(excluding: skipped, context: context) {

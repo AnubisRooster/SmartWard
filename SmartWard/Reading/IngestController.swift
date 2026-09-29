@@ -3,6 +3,7 @@ import Observation
 import SwiftData
 import IngestKit
 import KnowledgeStore
+import Pipeline
 
 /// Fetches followed sources into the store. One `PolitenessGate` is shared by
 /// the whole app, so rate limits and backoff hold across every refresh.
@@ -13,6 +14,9 @@ final class IngestController {
 
     private(set) var isRefreshing = false
     private(set) var refreshingSourceIDs: Set<UUID> = []
+    /// Sources finished of all being fetched, while a refresh is fetching;
+    /// `nil` otherwise, including while it indexes what it fetched.
+    private(set) var fetchProgress: StepProgress?
     private(set) var lastSummary: String?
 
     let fetcher = SourceFetcher(gate: PolitenessGate())
@@ -42,11 +46,13 @@ final class IngestController {
         defer {
             isRefreshing = false
             refreshingSourceIDs = []
+            fetchProgress = nil
         }
 
         var byID: [UUID: Source] = [:]
         for source in sources { byID[source.id] = source }
         refreshingSourceIDs = Set(byID.keys)
+        fetchProgress = StepProgress(done: 0, total: sources.count)
         let descriptors = sources.map { SourceDescriptor($0) }
         let fetcher = self.fetcher
 
@@ -66,6 +72,7 @@ final class IngestController {
             for await (id, result) in group {
                 refreshingSourceIDs.remove(id)
                 finished += 1
+                fetchProgress = StepProgress(done: finished, total: descriptors.count)
                 progress?(finished, descriptors.count)
                 guard let source = byID[id] else { continue }
                 switch result {
@@ -87,6 +94,7 @@ final class IngestController {
                 }
             }
         }
+        fetchProgress = nil   // fetching is done; indexing follows
         try? context.save()
 
         var parts = [added == 1 ? "1 new item" : "\(added) new items"]
