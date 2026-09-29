@@ -158,10 +158,13 @@ public struct ArticleSummarizer {
         return summary
     }
 
-    /// - Returns: the new summary (saved on `article`), or `nil` when no
+    /// - Parameter force: write a new summary even if the saved one is current.
+    /// - Returns: the summary (saved on `article`), or `nil` when no
     ///   summarizer may read this article right now.
     /// - Throws: `ArticleSummaryError`, or whatever the model throws.
-    public func summarize(_ article: Article, links: [UUID: ProjectLink], context: ModelContext) async throws -> ArticleSummary? {
+    public func summarize(_ article: Article, links: [UUID: ProjectLink], context: ModelContext,
+                          force: Bool = false) async throws -> ArticleSummary? {
+        if !force, let current = Self.cached(for: article) { return current }
         let text = Self.text(of: article)
         guard text.count >= Self.minimumCharacters else { throw ArticleSummaryError.tooShort }
 

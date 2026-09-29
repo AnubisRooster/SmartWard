@@ -40,13 +40,33 @@ struct FoundationModelsArticleSummarizer: ArticleSummarizing {
     }
 }
 
-/// Writes and tracks article summaries for the reader. It follows the same
-/// routing as the knowledge graph (D2, D5): on-device first, your provider
-/// only where extraction may use it and only while today's budget allows.
+/// Article summaries follow the same routing as the knowledge graph (D2,
+/// D5): on-device first, your provider only where extraction may use it and
+/// only while today's budget allows.
+///
+/// They're written when an article is ingested (the pipeline does it once the
+/// article is indexed), so they're ready when it's opened. This controller is
+/// the fallback for what the pipeline hasn't reached: items it left out
+/// (off-topic, older than a week, linked-repo docs), a very fresh one, a
+/// preview whose full text was just loaded, and "Summarize again".
 @MainActor
 @Observable
 final class ArticleSummaryController {
     static let shared = ArticleSummaryController()
+
+    /// The summarizers available right now, for the pipeline and the reader.
+    static func makeSummarizer() -> ArticleSummarizer {
+        var onDevice: (any ArticleSummarizing)?
+        if SystemLanguageModel.default.isAvailable {
+            onDevice = FoundationModelsArticleSummarizer()
+        }
+        var byok: BYOKArticleSummarizer?
+        if let settings = ExtractionSettings.byokSettings() {
+            byok = BYOKArticleSummarizer(client: ModelCatalogController.shared.fallbackLLM(),
+                                         provider: settings.provider, model: settings.model)
+        }
+        return ArticleSummarizer(onDevice: onDevice, byok: byok, budget: BudgetSettings.current)
+    }
 
     enum State: Equatable {
         case generating
@@ -76,19 +96,10 @@ final class ArticleSummaryController {
         for link in (try? context.fetch(FetchDescriptor<ProjectLink>())) ?? [] {
             if let sourceID = link.sourceID { links[sourceID] = link }
         }
-        var onDevice: (any ArticleSummarizing)?
-        if SystemLanguageModel.default.isAvailable {
-            onDevice = FoundationModelsArticleSummarizer()
-        }
-        var byok: BYOKArticleSummarizer?
-        if let settings = ExtractionSettings.byokSettings() {
-            byok = BYOKArticleSummarizer(client: ModelCatalogController.shared.fallbackLLM(),
-                                         provider: settings.provider, model: settings.model)
-        }
-        let summarizer = ArticleSummarizer(onDevice: onDevice, byok: byok, budget: BudgetSettings.current)
+        let summarizer = Self.makeSummarizer()
 
         do {
-            if try await summarizer.summarize(article, links: links, context: context) != nil {
+            if try await summarizer.summarize(article, links: links, context: context, force: force) != nil {
                 try? context.save()
                 states[id] = nil
             } else {

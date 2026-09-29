@@ -228,3 +228,132 @@ final class ArticleSummaryTests: XCTestCase {
         } catch {}
     }
 }
+
+/// Summaries are written by the pipeline, right after an article is indexed.
+final class IngestionSummaryTests: XCTestCase {
+    private let now = Date(timeIntervalSince1970: 1_800_000_000)
+    private let longText = String(repeating: "Coding agents plan with tools and verify their work. ", count: 12)
+
+    @MainActor
+    private func makeArticle(_ context: ModelContext, _ number: Int, source: Source?, stage: ArticleStage,
+                             ingested: TimeInterval = -3_600) -> Article {
+        let article = Article(canonicalURL: "https://x.example/\(number)", title: "Coding agents \(number)",
+                              cleanedText: longText)
+        context.insert(article)
+        article.source = source
+        article.stage = stage
+        article.ingestedAt = now.addingTimeInterval(ingested)
+        return article
+    }
+
+    @MainActor
+    private func runPipeline(_ summarizer: ArticleSummarizer?, in context: ModelContext,
+                     progress: ((Int, Int) -> Void)? = nil) async throws -> PipelineRunner.Report {
+        let runner = PipelineRunner(embedder: fakeModel, fullText: nil, summarizer: summarizer, now: { self.now })
+        return try await runner.run(context: context, until: now + 60, progress: progress)
+    }
+
+    @MainActor
+    func testANewArticleIsSummarizedRightAfterItIsIndexed() async throws {
+        let container = try KnowledgeSchema.makeContainer(inMemory: true)
+        let context = container.mainContext
+        let feed = Source(kind: "rss", url: "https://feed.example")
+        context.insert(feed)
+        let article = makeArticle(context, 1, source: feed, stage: .cleaned)
+        let stub = StubSummarizer(tier: .onDevice)
+
+        let report = try await runPipeline(ArticleSummarizer(onDevice: stub, byok: nil, now: { self.now }), in: context)
+
+        XCTAssertEqual(article.stage, .embedded)
+        XCTAssertEqual(report.embedded, 1)
+        XCTAssertEqual(report.summarized, 1)
+        XCTAssertNotNil(ArticleSummarizer.cached(for: article), "it's ready before anyone opens it")
+        XCTAssertEqual(stub.inputs.count, 1)
+    }
+
+    @MainActor
+    func testOnlyRecentFeedArticlesThatWereIndexedAreSummarizedAtIngestion() async throws {
+        let container = try KnowledgeSchema.makeContainer(inMemory: true)
+        let context = container.mainContext
+        let feed = Source(kind: "rss", url: "https://feed.example")
+        let repo = Source(kind: "github_repo", url: "https://github.com/me/x")
+        context.insert(feed)
+        context.insert(repo)
+        let recent = makeArticle(context, 1, source: feed, stage: .embedded)
+        let old = makeArticle(context, 2, source: feed, stage: .embedded, ingested: -8 * 86_400)
+        let repoDoc = makeArticle(context, 3, source: repo, stage: .embedded)
+        let offTopic = makeArticle(context, 4, source: feed, stage: .triagedOut)
+        let stub = StubSummarizer(tier: .onDevice)
+
+        let report = try await runPipeline(ArticleSummarizer(onDevice: stub, byok: nil, now: { self.now }), in: context)
+
+        XCTAssertEqual(report.summarized, 1)
+        XCTAssertNotNil(recent.summaryJSON)
+        XCTAssertNil(old.summaryJSON, "an older library is summarized when opened, not all at once")
+        XCTAssertNil(repoDoc.summaryJSON, "linked-repo docs aren't reading")
+        XCTAssertNil(offTopic.summaryJSON, "filtered-out items aren't worth the work")
+    }
+
+    @MainActor
+    func testASummaryIsNotWrittenTwiceButNewTextGetsANewOne() async throws {
+        let container = try KnowledgeSchema.makeContainer(inMemory: true)
+        let context = container.mainContext
+        let feed = Source(kind: "rss", url: "https://feed.example")
+        context.insert(feed)
+        let article = makeArticle(context, 1, source: feed, stage: .cleaned)
+        let stub = StubSummarizer(tier: .onDevice)
+        let summarizer = ArticleSummarizer(onDevice: stub, byok: nil, now: { self.now })
+
+        _ = try await runPipeline(summarizer, in: context)
+        _ = try await runPipeline(summarizer, in: context)
+        XCTAssertEqual(stub.inputs.count, 1, "the second run finds it already done")
+
+        // Its full page was loaded: back through triage and indexing.
+        article.cleanedText += " The full page adds more."
+        article.stage = .triaged
+        let again = try await runPipeline(summarizer, in: context)
+        XCTAssertEqual(again.summarized, 1)
+        XCTAssertEqual(stub.inputs.count, 2)
+        XCTAssertNotNil(ArticleSummarizer.cached(for: article))
+    }
+
+    @MainActor
+    func testARunStillFinishesWhenNothingMaySummarize() async throws {
+        let container = try KnowledgeSchema.makeContainer(inMemory: true)
+        let context = container.mainContext
+        let feed = Source(kind: "rss", url: "https://feed.example")
+        context.insert(feed)
+        let article = makeArticle(context, 1, source: feed, stage: .embedded)
+
+        let report = try await runPipeline(ArticleSummarizer(onDevice: nil, byok: nil), in: context)
+        XCTAssertEqual(report.summarized, 0)
+        XCTAssertNil(article.summaryJSON)
+
+        // And without a summarizer at all, nothing changes.
+        let none = try await runPipeline(nil, in: context)
+        XCTAssertEqual(none.summarized, 0)
+    }
+
+    @MainActor
+    func testSummariesCountInTheRunsProgress() async throws {
+        let container = try KnowledgeSchema.makeContainer(inMemory: true)
+        let context = container.mainContext
+        let feed = Source(kind: "rss", url: "https://feed.example")
+        context.insert(feed)
+        for number in 0..<3 { _ = makeArticle(context, number, source: feed, stage: .cleaned) }
+        _ = makeArticle(context, 3, source: feed, stage: .triaged)
+        let stub = StubSummarizer(tier: .onDevice)
+
+        var done: [Int] = []
+        var totals: [Int] = []
+        _ = try await runPipeline(ArticleSummarizer(onDevice: stub, byok: nil, now: { self.now }), in: context) { completed, total in
+            done.append(completed)
+            totals.append(total)
+        }
+
+        // Three articles need triage, embedding and a summary; one, embedding and a summary.
+        XCTAssertEqual(totals, Array(repeating: 11, count: 12))
+        XCTAssertEqual(done, Array(0...11))
+        XCTAssertEqual(stub.inputs.count, 4)
+    }
+}

@@ -61,7 +61,8 @@ final class PipelineController {
                                     judge: FoundationModelsRelevanceJudge(),
                                     strength: strength,
                                     extraction: ExtractionSettings.tiers(),
-                                    budget: BudgetSettings.current)
+                                    budget: BudgetSettings.current,
+                                    summarizer: ArticleSummaryController.makeSummarizer())
         do {
             let report = try await runner.run(context: context, until: Date().addingTimeInterval(budget)) { completed, total in
                 self.indexProgress = StepProgress(done: completed, total: total)
