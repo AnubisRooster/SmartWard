@@ -27,6 +27,8 @@ struct ArticleReaderView: View {
                     .font(.title2.bold())
                 metadata
 
+                ArticleSummaryCard(article: article)
+
                 ThemesRow(article: article)
 
                 if !article.relevanceReason.isEmpty {
@@ -79,6 +81,10 @@ struct ArticleReaderView: View {
             }
         }
         .task { recordOpen() }
+        // On first open, and again when the text changes (the full page was loaded).
+        .task(id: article.cleanedText.count) {
+            await ArticleSummaryController.shared.ensure(article, context: context)
+        }
     }
 
     private var metadata: some View {

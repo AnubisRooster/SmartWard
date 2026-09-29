@@ -32,6 +32,8 @@ public struct ArticleIndexer {
             context.delete(old)
         }
         article.chunks = []
+        // New or changed text: the summary is written again after indexing.
+        article.summaryJSON = nil
 
         let body = article.cleanedText.isEmpty ? article.summary : article.cleanedText
         let text = String("\(article.title)\n\n\(body)".prefix(Self.maxCharacters))
@@ -74,17 +76,21 @@ public final class PipelineRunner {
         public var embedded = 0
         public var linked = 0
         public var turnsIndexed = 0
+        /// Article summaries written this run.
+        public var summarized = 0
         /// Articles still waiting in a stage this run didn't reach.
         public var remaining = 0
 
         public init(triaged: Int = 0, triagedOut: Int = 0, fullTextFetched: Int = 0,
-                    embedded: Int = 0, linked: Int = 0, turnsIndexed: Int = 0, remaining: Int = 0) {
+                    embedded: Int = 0, linked: Int = 0, turnsIndexed: Int = 0, summarized: Int = 0,
+                    remaining: Int = 0) {
             self.triaged = triaged
             self.triagedOut = triagedOut
             self.fullTextFetched = fullTextFetched
             self.embedded = embedded
             self.linked = linked
             self.turnsIndexed = turnsIndexed
+            self.summarized = summarized
             self.remaining = remaining
         }
     }
@@ -100,6 +106,8 @@ public final class PipelineRunner {
     private let threshold: Double
     private let extraction: ExtractionTiers?
     private let budget: DailyBudget?
+    /// Writes each newly indexed article's summary, so it's ready when opened.
+    private let summarizer: ArticleSummarizer?
     private let now: () -> Date
 
     /// A turn is indexed once it's this old, so a reply still being saved isn't cut short.
@@ -108,13 +116,14 @@ public final class PipelineRunner {
     public init(embedder: EmbeddingModel, fullText: (any FullTextFetching)?,
                 judge: (any RelevanceJudging)? = nil, strength: Triage.Strength = .balanced,
                 extraction: ExtractionTiers? = nil, budget: DailyBudget? = nil,
-                now: @escaping () -> Date = { Date() }) {
+                summarizer: ArticleSummarizer? = nil, now: @escaping () -> Date = { Date() }) {
         self.embedder = embedder
         self.fullText = fullText
         self.judge = judge
         self.threshold = strength.threshold
         self.extraction = extraction
         self.budget = budget
+        self.summarizer = summarizer
         self.now = now
     }
 
@@ -165,10 +174,15 @@ public final class PipelineRunner {
         if let extraction {
             graph = try GraphIndexer(context: context, embedder: embedder, tiers: extraction, now: now)
             graph?.budget = budget
+        }
+        if extraction != nil || summarizer != nil {
             for link in try context.fetch(FetchDescriptor<ProjectLink>()) {
                 if let sourceID = link.sourceID { links[sourceID] = link }
             }
         }
+        // Summaries the run couldn't write (no allowed summarizer, too little
+        // text, a model error), so they aren't tried again until the next run.
+        var skippedSummaries = Set<UUID>()
 
         var total = 0
         var completed = 0
@@ -178,6 +192,12 @@ public final class PipelineRunner {
                 let raw = stage.rawValue
                 let count = try context.fetchCount(FetchDescriptor<Article>(predicate: #Predicate { $0.stageRaw == raw }))
                 total += count * Self.steps(from: stage, includesLinking: linking)
+                // Articles not yet indexed get a summary once they are.
+                if summarizer != nil, stage != .embedded { total += count }
+            }
+            if summarizer != nil {
+                let cutoff = now().addingTimeInterval(-Self.summaryLookback)
+                total += try context.fetchCount(FetchDescriptor<Article>(predicate: Self.needsSummary(since: cutoff)))
             }
             if graph != nil {
                 let settled = now().addingTimeInterval(-Self.turnSettleTime)
@@ -209,7 +229,26 @@ public final class PipelineRunner {
                 continue
             }
 
-            guard let article = try nextWork(excluding: skipped, context: context) else { break }
+            guard let article = try nextWork(excluding: skipped, context: context) else {
+                // Everything is indexed: write summaries, newest first, while time allows.
+                guard let summarizer,
+                      let next = try nextSummary(excluding: skippedSummaries, context: context) else { break }
+                do {
+                    if try await summarizer.summarize(next, links: links, context: context) != nil {
+                        report.summarized += 1
+                    } else {
+                        skippedSummaries.insert(next.id)
+                    }
+                } catch is CancellationError {
+                    break
+                } catch {
+                    skippedSummaries.insert(next.id)
+                }
+                try context.save()
+                completed += 1
+                progress?(min(completed, total), total)
+                continue
+            }
             switch article.stage {
             case .fetched:
                 let relevant = try await triage(article, model: model, report: &report)
@@ -271,6 +310,29 @@ public final class PipelineRunner {
     private func next(_ stage: ArticleStage, excluding skipped: Set<UUID>, context: ModelContext) throws -> Article? {
         let raw = stage.rawValue
         var descriptor = FetchDescriptor<Article>(predicate: #Predicate { $0.stageRaw == raw },
+                                                  sortBy: [SortDescriptor(\.ingestedAt, order: .reverse)])
+        descriptor.fetchLimit = Self.batchSize + skipped.count
+        return try context.fetch(descriptor).first { !skipped.contains($0.id) }
+    }
+
+    /// New articles are summarized this long after ingestion; older ones
+    /// (a library from before summaries) only when opened.
+    static let summaryLookback: TimeInterval = 7 * 86_400
+
+    /// Indexed feed articles with no summary. Linked-repo docs aren't reading,
+    /// so they're summarized only if opened.
+    static func needsSummary(since cutoff: Date) -> Predicate<Article> {
+        #Predicate<Article> { article in
+            article.summaryJSON == nil && article.ingestedAt >= cutoff
+                && (article.stageRaw == "embedded" || article.stageRaw == "linked")
+                && article.source?.kind != "github_repo"
+        }
+    }
+
+    /// The newest recently ingested, indexed article that has no summary yet.
+    private func nextSummary(excluding skipped: Set<UUID>, context: ModelContext) throws -> Article? {
+        let cutoff = now().addingTimeInterval(-Self.summaryLookback)
+        var descriptor = FetchDescriptor<Article>(predicate: Self.needsSummary(since: cutoff),
                                                   sortBy: [SortDescriptor(\.ingestedAt, order: .reverse)])
         descriptor.fetchLimit = Self.batchSize + skipped.count
         return try context.fetch(descriptor).first { !skipped.contains($0.id) }
