@@ -33,6 +33,9 @@ struct ProjectsView: View {
             .navigationDestination(for: Project.self) { project in
                 ProjectDetailView(project: project)
             }
+            .navigationDestination(for: Article.self) { article in
+                ArticleReaderView(article: article)
+            }
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
                     Button("Add project", systemImage: "plus") { isAdding = true }
@@ -103,6 +106,7 @@ struct ProjectDetailView: View {
             }
             BriefSection(project: project)
             StrategyItemsSection(project: project)
+            ProjectArticlesSection(project: project)
             Section {
                 ForEach(links) { link in
                     Button {
