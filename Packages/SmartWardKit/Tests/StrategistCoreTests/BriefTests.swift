@@ -112,6 +112,7 @@ final class BriefEditingTests: XCTestCase {
         let tool = ProposeBriefUpdateTool(project: project)
         XCTAssertEqual(tool.definition.name, "propose_brief_update")
         XCTAssertNil(try tool.confirmation(for: [:]), "a proposal changes nothing, so it isn't gated")
+        XCTAssertFalse(tool.asksForApproval)
 
         let result = try await tool.run(arguments: ["markdown": "# P\nWe serve with vLLM.\nNext: benchmark.",
                                                     "rationale": "Records the serving decision."])

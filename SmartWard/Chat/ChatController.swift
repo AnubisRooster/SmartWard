@@ -111,22 +111,6 @@ final class ChatController {
                                                            context: context)
         let references = ledger.register(found)
         system += "\n\n" + ReferenceContext.guidance
-        var allowed = StrategistPrompt.allowedTools(for: conversation.mode)
-        if turn.isHandsFree {
-            allowed = ActionTools.handsFreeTools(allowed, autoApprove: turn == .spoken && autoApproveEnabled)
-            system += "\n\n" + VoiceTurn.promptNote
-        }
-        if !allowed.isDisjoint(with: ["fetch_url", "add_source"]) {
-            system += "\n\n" + ActionTools.guidance
-        }
-        if !references.isEmpty {
-            system += "\n\n" + ReferenceContext.render(references)
-        }
-        let history = ConversationHistory.messages(from: conversation.messages ?? [])
-        let request = LLMRequest(provider: provider,
-                                 model: conversation.model,
-                                 messages: [LLMChatMessage.system(system)] + history,
-                                 maxTokens: 4096)
         var tools: [any StrategistTool] = [
             SearchCorpusTool(ledger: ledger) { query in
                 await SearchController.shared.passages(for: query, excludingConversation: conversationID,
@@ -142,7 +126,26 @@ final class ChatController {
             tools += [ProjectStateTool(project: project), RecordStrategyItemTool(project: project),
                       ProposeBriefUpdateTool(project: project)]
         }
+        // The mode's allow-list, then (when nobody can tap an approval card)
+        // only the tools that never ask or that you've set to auto-approve.
+        let allowed = StrategistPrompt.allowedTools(for: conversation.mode)
         tools = tools.filter { allowed.contains($0.definition.name) }
+        if turn.isHandsFree {
+            tools = ActionTools.handsFreeTools(tools, autoApprove: turn == .spoken && autoApproveEnabled)
+            system += "\n\n" + VoiceTurn.promptNote
+        }
+        let offered = Set(tools.map { $0.definition.name })
+        if !offered.isDisjoint(with: ["fetch_url", "add_source"]) {
+            system += "\n\n" + ActionTools.guidance
+        }
+        if !references.isEmpty {
+            system += "\n\n" + ReferenceContext.render(references)
+        }
+        let history = ConversationHistory.messages(from: conversation.messages ?? [])
+        let request = LLMRequest(provider: provider,
+                                 model: conversation.model,
+                                 messages: [LLMChatMessage.system(system)] + history,
+                                 maxTokens: 4096)
 
         let client: any LLMCompleting
         if let llm {

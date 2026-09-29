@@ -36,6 +36,7 @@ func reply(_ text: String, calls: [LLMToolCall] = []) -> LLMResponse {
 /// Echoes its arguments; records how often it ran.
 final class EchoTool: StrategistTool {
     private(set) var calls: [JSONValue] = []
+    var asksForApproval: Bool { false }
     var definition: LLMTool { LLMTool(name: "echo", description: "Echo.", inputSchema: ["type": "object"]) }
 
     @MainActor
@@ -46,6 +47,7 @@ final class EchoTool: StrategistTool {
 }
 
 struct FailingTool: StrategistTool {
+    var asksForApproval: Bool { false }
     var definition: LLMTool { LLMTool(name: "fail", description: "Fails.", inputSchema: ["type": "object"]) }
 
     @MainActor
@@ -57,6 +59,7 @@ struct FailingTool: StrategistTool {
 /// Asks for approval before running; rejects `{"bad": true}` outright.
 final class GuardedTool: StrategistTool {
     private(set) var runs = 0
+    var asksForApproval: Bool { true }
     var definition: LLMTool { LLMTool(name: "guarded", description: "Acts.", inputSchema: ["type": "object"]) }
 
     @MainActor

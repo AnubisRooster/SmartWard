@@ -4,6 +4,11 @@ import BYOKLLMKit
 /// A capability the strategist can invoke mid-conversation.
 public protocol StrategistTool {
     var definition: LLMTool { get }
+    /// Whether calls can pause on an approval card, that is, whether
+    /// `confirmation(for:)` can return an `ActionRequest`. There is
+    /// deliberately no default: a new tool has to say, so a turn where nobody
+    /// can tap a card (voice, Siri) never offers one it would only decline.
+    var asksForApproval: Bool { get }
     /// For tools with side effects or that reach the network: what the user
     /// is asked to approve before `run` (PLAN §5.7: side effects need you).
     /// `nil` runs without asking. Throwing rejects the arguments before the
