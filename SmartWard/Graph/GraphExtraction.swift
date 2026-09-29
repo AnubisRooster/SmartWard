@@ -123,7 +123,7 @@ struct KnowledgeGraphSettingsSection: View {
         } header: {
             Text("Knowledge graph")
         } footer: {
-            Text("Articles are read on-device with Apple Intelligence, or by your provider when Apple Intelligence is off. Chats and public repo docs go to your provider for richer themes; a cheap model is plenty. Off-the-record chats and private repos are never sent.")
+            Text("Articles are read and summarized on-device with Apple Intelligence, or by your provider when Apple Intelligence is off. Chats and public repo docs go to your provider for richer themes; a cheap model is plenty. Off-the-record chats and private repos are never sent.")
         }
     }
 }

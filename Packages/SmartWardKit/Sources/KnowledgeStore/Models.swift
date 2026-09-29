@@ -281,6 +281,10 @@ public final class Article {
     public var localOnly: Bool = false
     /// The project it was shared to from the share sheet, if any.
     public var projectID: UUID?
+    /// The reader's five-question summary, as JSON (`ArticleSummary` in
+    /// Pipeline). A cache: it's regenerated when the text changes and isn't
+    /// part of a library backup.
+    public var summaryJSON: String?
 
     @Relationship(deleteRule: .cascade, inverse: \Chunk.article)
     public var chunks: [Chunk]? = []
