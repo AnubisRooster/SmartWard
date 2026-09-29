@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import IngestKit
 import KnowledgeStore
 import Pipeline
 
@@ -59,6 +60,13 @@ struct ReadingView: View {
 
     private var hasFollowedSources: Bool {
         sources.contains { $0.isEnabled && $0.sourceKind.isPolled }
+    }
+
+    /// Followed sources whose last fetch failed, by name.
+    private var failingSourceTitles: [String] {
+        sources.filter { $0.isEnabled && $0.sourceKind.isPolled && $0.lastError != nil }
+            .sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
+            .map { $0.title.isEmpty ? $0.url : $0.title }
     }
 
     /// What's running now and how far along it is. Indexing shows once its
@@ -149,6 +157,15 @@ struct ReadingView: View {
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                     .listRowSeparator(.hidden)
+            }
+            if let failing = SourceHealth.summary(failing: failingSourceTitles) {
+                Button {
+                    showingSources = true
+                } label: {
+                    Label(failing, systemImage: "exclamationmark.triangle")
+                        .font(.footnote)
+                }
+                .listRowSeparator(.hidden)
             }
             if pipeline.waiting > 0 {
                 Label(pipeline.waiting == 1 ? "1 article waiting to be indexed"

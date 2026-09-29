@@ -208,6 +208,26 @@ final class SourceFetcherTests: XCTestCase {
         }
     }
 
+    func testARefusedRedirectIsSaidToBeOneNotAnHTTPError() async throws {
+        let transport = FakeTransport { _ in (301, ["Location": "http://127.0.0.1:8080/feed.xml"], "") }
+        let fetcher = SourceFetcher(gate: .testing(transport, clock: FakeClock()))
+        do {
+            _ = try await fetcher.fetch(SourceDescriptor(kind: .rss, url: "https://blog.example/feed.xml"))
+            XCTFail("expected redirectedAway")
+        } catch let error as IngestError {
+            XCTAssertEqual(error, .redirectedAway(host: "127.0.0.1"))
+        }
+
+        let missing = FakeTransport { _ in (404, [:], "") }
+        do {
+            _ = try await SourceFetcher(gate: .testing(missing, clock: FakeClock()))
+                .fetch(SourceDescriptor(kind: .rss, url: "https://blog.example/gone.xml"))
+            XCTFail("expected http")
+        } catch let error as IngestError {
+            XCTAssertEqual(error, .http(status: 404), "other statuses are unchanged")
+        }
+    }
+
     func testHackerNewsAndHuggingFaceParsing() throws {
         let hn = """
         {"hits":[

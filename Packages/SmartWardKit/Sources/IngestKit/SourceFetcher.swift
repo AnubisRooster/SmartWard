@@ -254,6 +254,11 @@ public struct SourceFetcher: Sendable {
             return (data, response)
         case 304:
             return nil
+        case 300...399:
+            // The transport follows redirects to public hosts only, so a
+            // redirect that reaches here was refused (or can't be followed).
+            let host = response.value(forHTTPHeaderField: "Location").flatMap { URL(string: $0)?.host }
+            throw IngestError.redirectedAway(host: host)
         default:
             throw IngestError.http(status: response.statusCode)
         }
