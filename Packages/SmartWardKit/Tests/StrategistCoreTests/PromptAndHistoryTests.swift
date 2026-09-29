@@ -105,6 +105,8 @@ final class ProjectToolTests: XCTestCase {
         container.mainContext.insert(project)
 
         let tool = RecordStrategyItemTool(project: project)
+        XCTAssertTrue(tool.asksForApproval)
+        XCTAssertNotNil(try tool.confirmation(for: ["kind": "decision", "text": "x"]), "it always asks")
         let output = try await tool.run(arguments: ["kind": "decision", "text": " Use OpenRouter as the default. "])
 
         XCTAssertEqual(output, "Recorded decision: Use OpenRouter as the default.")
@@ -142,6 +144,7 @@ final class ProjectToolTests: XCTestCase {
         project.items?.append(done)
         done.status = .done
 
+        XCTAssertFalse(ProjectStateTool(project: project).asksForApproval)
         let output = try await ProjectStateTool(project: project).run(arguments: [:])
         XCTAssertTrue(output.contains("Goal: Ship v1"))
         XCTAssertTrue(output.contains("- [action item] Wire chat"))

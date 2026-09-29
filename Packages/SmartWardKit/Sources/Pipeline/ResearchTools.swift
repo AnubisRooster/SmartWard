@@ -44,6 +44,9 @@ public struct SearchCorpusTool: StrategistTool {
         self.search = search
     }
 
+    /// Never asks: it only reads or proposes.
+    public var asksForApproval: Bool { false }
+
     public var definition: LLMTool {
         let query: JSONValue = ["type": "string", "description": "What to look for, in a few words."]
         let properties: JSONValue = ["query": query]
@@ -73,6 +76,9 @@ public struct GraphNeighborsTool: StrategistTool {
     public init(context: ModelContext) {
         self.context = context
     }
+
+    /// Never asks: it only reads or proposes.
+    public var asksForApproval: Bool { false }
 
     public var definition: LLMTool {
         let entity: JSONValue = ["type": "string", "description": "A theme, technique, model, tool, paper, org or person."]
@@ -167,6 +173,9 @@ public struct OpenArticleTool: StrategistTool {
         self.ledger = ledger
         self.context = context
     }
+
+    /// Never asks: it only reads or proposes.
+    public var asksForApproval: Bool { false }
 
     public var definition: LLMTool {
         let id: JSONValue = ["type": "string", "description": "A reference id such as R2."]

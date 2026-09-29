@@ -22,10 +22,6 @@ public enum ActionTools {
     public static let autoApproveKey = "actions.autoApprove"
     public static let autoApprovableTools: Set<String> = ["fetch_url", "add_source"]
 
-    /// Every tool whose calls pause on an approval card (its
-    /// `confirmation(for:)` returns an `ActionRequest`).
-    public static let approvalGatedTools: Set<String> = ["fetch_url", "add_source", "record_strategy_item"]
-
     /// How a pending action is answered. Hands-free (a voice conversation)
     /// there's nobody to tap a card, so anything not auto-approved is
     /// declined rather than left waiting forever.
@@ -36,11 +32,11 @@ public enum ActionTools {
         return handsFree ? .decline : .ask
     }
 
-    /// The tools to offer when nobody can tap an approval card: `allowed`
-    /// minus every approval-gated tool that wouldn't be auto-approved, so
-    /// the strategist doesn't reach for one it can't use.
-    public static func handsFreeTools(_ allowed: Set<String>, autoApprove: Bool) -> Set<String> {
-        allowed.filter { !approvalGatedTools.contains($0) || (autoApprove && autoApprovableTools.contains($0)) }
+    /// The tools to offer when nobody can tap an approval card: `tools`
+    /// minus every one that asks first (`asksForApproval`) and wouldn't be
+    /// auto-approved, so the strategist doesn't reach for one it can't use.
+    public static func handsFreeTools(_ tools: [any StrategistTool], autoApprove: Bool) -> [any StrategistTool] {
+        tools.filter { !$0.asksForApproval || (autoApprove && autoApprovableTools.contains($0.definition.name)) }
     }
 }
 
@@ -79,6 +75,9 @@ public struct FetchURLTool: StrategistTool {
         self.context = context
         self.localOnly = localOnly
     }
+
+    /// Asks first: its `confirmation(for:)` returns an `ActionRequest`.
+    public var asksForApproval: Bool { true }
 
     public var definition: LLMTool {
         let url: JSONValue = ["type": "string", "description": "The full http(s) URL of a public web page."]
@@ -161,6 +160,9 @@ public struct AddSourceTool: StrategistTool {
     public init(context: ModelContext) {
         self.context = context
     }
+
+    /// Asks first: its `confirmation(for:)` returns an `ActionRequest`.
+    public var asksForApproval: Bool { true }
 
     public var definition: LLMTool {
         let kind: JSONValue = [

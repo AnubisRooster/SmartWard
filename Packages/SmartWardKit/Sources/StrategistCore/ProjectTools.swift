@@ -20,6 +20,9 @@ public struct ProjectStateTool: StrategistTool {
         self.project = project
     }
 
+    /// Never asks: it only reads or proposes.
+    public var asksForApproval: Bool { false }
+
     public var definition: LLMTool {
         LLMTool(name: "list_project_state",
                 description: "Returns the current project's goal, constraints, linked repos, and open decisions, questions, action items, assumptions and risks.",
@@ -43,6 +46,9 @@ public struct RecordStrategyItemTool: StrategistTool {
     public init(project: Project) {
         self.project = project
     }
+
+    /// Asks first: its `confirmation(for:)` returns an `ActionRequest`.
+    public var asksForApproval: Bool { true }
 
     public var definition: LLMTool {
         let kinds: [JSONValue] = StrategyItemKind.allCases.map { .string($0.rawValue) }
@@ -106,6 +112,9 @@ public struct ProposeBriefUpdateTool: StrategistTool {
     public init(project: Project) {
         self.project = project
     }
+
+    /// Never asks: it only reads or proposes.
+    public var asksForApproval: Bool { false }
 
     public var definition: LLMTool {
         let markdown: JSONValue = ["type": "string", "description": "The complete revised brief in Markdown, not just the changes."]
