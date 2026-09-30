@@ -63,6 +63,7 @@ final class ArticleReadoutController {
     @ObservationIgnored private var currentUtterance: AVSpeechUtterance?
     @ObservationIgnored private var remoteTargets: [(command: MPRemoteCommand, token: Any)] = []
     @ObservationIgnored private var observers: [NSObjectProtocol] = []
+    @ObservationIgnored private var scheduledStop: Task<Void, Never>?
     @ObservationIgnored private var nowPlayingTitle = ""
     @ObservationIgnored private var nowPlayingSource = ""
 
@@ -138,6 +139,23 @@ final class ArticleReadoutController {
         return true
     }
 
+    /// Ends the briefing after `seconds` (SmartWard's lock-after period, for one
+    /// started from the lock screen), unless it's cancelled (the app came back in
+    /// front) or a different reading has started since.
+    func stopBriefing(after seconds: TimeInterval) {
+        cancelScheduledStop()
+        scheduledStop = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(max(0, seconds) * 1_000_000_000))
+            guard !Task.isCancelled, let self, self.isBriefing else { return }
+            self.stop()
+        }
+    }
+
+    func cancelScheduledStop() {
+        scheduledStop?.cancel()
+        scheduledStop = nil
+    }
+
     /// Says the segment being read again, so a new speed applies now, not at the next one.
     func restartSegment() {
         guard playback.status == .playing else { return }
@@ -210,6 +228,7 @@ final class ArticleReadoutController {
         playback.stop()
         articleID = nil
         isAnswer = false
+        cancelScheduledStop()
         endBriefing()
         currentUtterance = nil
         synthesizer.stopSpeaking(at: .immediate)

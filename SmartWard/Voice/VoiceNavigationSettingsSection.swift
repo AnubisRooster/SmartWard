@@ -33,3 +33,18 @@ struct VoiceNavigationSettingsSection: View {
         }
     }
 }
+
+/// Settings → Briefings: whether Siri may start one with the phone locked.
+struct BriefingSettingsSection: View {
+    @AppStorage(BriefingLauncher.lockScreenKey) private var lockScreen = true
+
+    var body: some View {
+        Section {
+            Toggle("From the lock screen", isOn: $lockScreen)
+        } header: {
+            Text("Briefings")
+        } footer: {
+            Text("\u{201C}Hey Siri, brief me with SmartWard\u{201D} reads your top unread articles aloud, with the phone locked or in the car (CarPlay's Siri included), and keeps going in the background; next, previous and pause work from Siri, headphones, the steering wheel and the lock screen. Anyone who can talk to your locked phone could start one and hear your article titles and summaries, so turn this off if that matters. With SmartWard's own lock on, a briefing from the lock screen only works while SmartWard is unlocked, and stops when its lock-after time is up.")
+        }
+    }
+}

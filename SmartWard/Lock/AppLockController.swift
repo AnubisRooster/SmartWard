@@ -34,6 +34,19 @@ final class AppLockController {
                       gracePeriod: UserDefaults.standard.double(forKey: Self.gracePeriodKey))
     }
 
+    /// How long SmartWard's contents may still be spoken (a briefing from Siri)
+    /// without unlocking it: `nil` for no limit (its lock is off, or the app is
+    /// in front), 0 for not at all, otherwise what's left of the lock-after
+    /// grace period.
+    var handsFreeWindow: TimeInterval? {
+        guard isEnabled, PINService.shared.isPINSetup else { return nil }
+        // Never shown since launch, or locked: the contents are behind the lock.
+        guard hasEvaluatedLaunch, !isLocked else { return 0 }
+        guard let backgroundedAt else { return nil }
+        let grace = UserDefaults.standard.double(forKey: Self.gracePeriodKey)
+        return max(0, grace - Date().timeIntervalSince(backgroundedAt))
+    }
+
     func handle(_ phase: ScenePhase) {
         switch phase {
         case .active:

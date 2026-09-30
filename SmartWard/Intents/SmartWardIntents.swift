@@ -74,14 +74,20 @@ struct OpenDigestIntent: AppIntent {
     }
 }
 
-struct BriefMeIntent: AppIntent {
+/// "Hey Siri, brief me with SmartWard": reads your top unread articles aloud,
+/// with the phone locked if need be. An audio-playback intent, so the system
+/// starts the app in the background and doesn't talk over it; the answer to
+/// "next" and "pause" comes from the Now Playing controls (Siri, headphones,
+/// steering wheel, lock screen). See `BriefingLauncher` for when it may start.
+struct BriefMeIntent: AudioPlaybackIntent {
     static let title: LocalizedStringResource = "Brief Me"
     static let description = IntentDescription("Reads your top unread articles aloud, a short gist of each.")
-    static let openAppWhenRun = true
+    /// Runs with the phone locked; `BriefingGate` and the Settings switch decide what that may do.
+    static let authenticationPolicy: IntentAuthenticationPolicy = .alwaysAllowed
 
     @MainActor
     func perform() async throws -> some IntentResult {
-        AppNavigation.shared.briefingRequested = true
+        if case .failure(let refusal) = BriefingLauncher.start(fromSiri: true) { throw refusal }
         return .result()
     }
 }
