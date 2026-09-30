@@ -10,6 +10,10 @@ final class ArticleReadoutTests: XCTestCase {
     /// 15 January 2027, 08:00 UTC.
     private let published = Date(timeIntervalSince1970: 1_800_000_000)
 
+    /// 94 characters, starting with a capital like real prose: sentence
+    /// splitting doesn't break before a lowercase word.
+    private let longSentence = "Abcdefghi " + String(repeating: "abcdefghi ", count: 8) + "end."
+
     private struct Fixture {
         /// Kept so the store outlives the context.
         let container: ModelContainer
@@ -154,7 +158,7 @@ final class ArticleReadoutTests: XCTestCase {
 
     @MainActor
     func testALongParagraphIsSaidInPiecesCutBetweenSentences() {
-        let sentence = String(repeating: "abcdefghi ", count: 9) + "end."
+        let sentence = longSentence
         let paragraph = Array(repeating: sentence, count: 10).joined(separator: " ")
         let pieces = ArticleReadout.pieces(of: paragraph)
 
@@ -171,7 +175,7 @@ final class ArticleReadoutTests: XCTestCase {
 
     @MainActor
     func testPiecesOfOneParagraphShareItsPlaceOnScreen() throws {
-        let sentence = String(repeating: "abcdefghi ", count: 9) + "end."
+        let sentence = longSentence
         let text = Array(repeating: sentence, count: 10).joined(separator: " ")
         let fixture = try makeFixture(text: text, withSummary: false, scored: false)
         let body = segments(fixture).filter { $0.anchor != .title && $0.anchor != .details }
