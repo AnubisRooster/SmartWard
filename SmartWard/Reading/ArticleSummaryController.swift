@@ -5,38 +5,30 @@ import FoundationModels
 import KnowledgeStore
 import Pipeline
 
-/// T1 article summaries: Apple Foundation Models with guided generation,
-/// on-device. The default for every article, and the only tier that ever
-/// reads private content.
+/// T1 article summaries: Apple Foundation Models, on-device. The default for
+/// every article, and the only tier that ever reads private content.
+///
+/// The model runs with `permissiveContentTransformations`. Apple's default
+/// guardrails scan the article going in and the summary coming out, and turn
+/// down plenty of harmless news and posts ("Detected content likely to be
+/// unsafe"); the permissive level exists for transforming text you were given,
+/// such as summarizing an article. It only applies to plain-text answers (with
+/// guided generation it behaves like the default), so the model answers in a
+/// simple labeled form that `ArticleSummaryText` reads.
 struct FoundationModelsArticleSummarizer: ArticleSummarizing {
     let tier = ExtractionTier.onDevice
     /// Leaves room in the 4,096-token window for the instructions and the answers.
     let maxInputCharacters = 6_000
 
-    @Generable
-    struct Generated {
-        @Guide(description: "The subject, and what kind of piece it is (paper, release notes, opinion, tutorial, news)",
-               .maximumCount(2))
-        var about: [String]
-        @Guide(description: "The main claims or findings, stated plainly", .maximumCount(2))
-        var says: [String]
-        @Guide(description: "The data, experiments, examples or reasoning offered; say so if there are none",
-               .maximumCount(2))
-        var evidence: [String]
-        @Guide(description: "Who or what it affects, and why that is significant", .maximumCount(2))
-        var matters: [String]
-        @Guide(description: "The facts worth keeping: numbers, names, decisions, next steps", .maximumCount(2))
-        var remember: [String]
-    }
-
     func summarize(title: String, text: String) async throws -> ArticleSummaryOutput {
-        let session = LanguageModelSession(instructions: ArticleSummaryPrompt.instructions)
+        let model = SystemLanguageModel(useCase: .general, guardrails: .permissiveContentTransformations)
+        let session = LanguageModelSession(model: model, instructions: ArticleSummaryPrompt.plainTextInstructions)
         let prompt = ArticleSummaryPrompt.user(title: title, text: String(text.prefix(maxInputCharacters)))
-        let generated = try await session.respond(to: prompt, generating: Generated.self).content
-        return ArticleSummaryOutput(draft: ArticleSummary.Draft(about: generated.about, says: generated.says,
-                                                                evidence: generated.evidence,
-                                                                matters: generated.matters,
-                                                                remember: generated.remember))
+        let reply = try await session.respond(to: prompt).content
+        // Even in this mode the model can answer a sensitive article with a
+        // refusal in words; that has no headings, so it isn't shown as a summary.
+        guard let draft = ArticleSummaryText.parse(reply) else { throw ArticleSummaryError.declined }
+        return ArticleSummaryOutput(draft: draft)
     }
 }
 
@@ -78,6 +70,21 @@ final class ArticleSummaryController {
         case failed(String)
     }
 
+    /// What to tell the reader. Apple's safety errors read as "Detected
+    /// content likely to be unsafe", which sounds like a verdict on the
+    /// article; it's the on-device model declining.
+    static func message(for error: Error) -> String {
+        if let generation = error as? LanguageModelSession.GenerationError {
+            switch generation {
+            case .guardrailViolation, .refusal:
+                return "Apple Intelligence's safety check declined to summarize this article."
+            default:
+                break
+            }
+        }
+        return error.localizedDescription
+    }
+
     /// What's happening for each article that isn't simply summarized.
     private(set) var states: [UUID: State] = [:]
 
@@ -109,7 +116,7 @@ final class ArticleSummaryController {
             states[id] = .tooShort
         } catch {
             // Leaving the article cancels this; that isn't a failure.
-            states[id] = Task.isCancelled ? nil : .failed(error.localizedDescription)
+            states[id] = Task.isCancelled ? nil : .failed(Self.message(for: error))
         }
     }
 }
