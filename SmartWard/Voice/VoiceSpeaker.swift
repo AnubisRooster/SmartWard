@@ -26,12 +26,12 @@ final class VoiceSpeaker {
     private init() {
         synthesizer.delegate = delegate
         delegate.onFinish = { [weak self] _ in
-            Task { @MainActor in
+            Task { @MainActor [weak self] in
                 guard let self else { return }
-                pending = false
-                lastFinishedAt = Date()
+                self.pending = false
+                self.lastFinishedAt = Date()
                 // Stop ducking other apps' audio, and give the session back if nothing else has it.
-                if !synthesizer.isSpeaking { AppAudio.shared.releaseIfIdle() }
+                if !self.synthesizer.isSpeaking { AppAudio.shared.releaseIfIdle() }
             }
         }
     }
