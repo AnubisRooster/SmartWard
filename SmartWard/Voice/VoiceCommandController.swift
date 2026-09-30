@@ -333,6 +333,112 @@ final class VoiceCommandController {
         }
     }
 
+    /// Runs the search the Reading tab is showing, and says what it found, so
+    /// "open the first one" has something to mean.
+    private func search(_ words: String, in library: ModelContext) {
+        Task { @MainActor [weak self] in
+            let hits = await SearchController.shared.search(words, context: library)
+            let navigation = AppNavigation.shared
+            // Something newer was searched for meanwhile.
+            guard let self, navigation.readingQuery == words else { return }
+            let ids = hits.map(\.articleID)
+            let found = (try? library.fetch(FetchDescriptor<Article>(predicate: #Predicate { ids.contains($0.id) }))) ?? []
+            var byID: [UUID: Article] = [:]
+            for article in found { byID[article.id] = article }
+            let ordered = hits.compactMap { byID[$0.articleID] }
+            navigation.listedArticles = ordered
+            self.present(.answer(VoiceAnswers.searchResults(query: words, titles: ordered.map(\.title),
+                                                             total: ordered.count)))
+        }
+    }
+
+    /// The strategist's answer, read aloud like an article: pause, keep going and stop work on it.
+    private func ask(_ question: String, in library: ModelContext) {
+        isAsking = true
+        Task { @MainActor [weak self] in
+            let answer = await VoiceAsk.ask(question, context: library)
+            guard let self else { return }
+            self.isAsking = false
+            switch answer {
+            case .spoken(let text):
+                self.present(.silent("Reading the answer"))
+                ArticleReadoutController.shared.startAnswer(text, title: question)
+            case .failed(let message):
+                self.present(.answer(message))
+            }
+        }
+    }
+
+    private func answer(for status: VoiceStatus) -> String {
+        guard let library else { return "I couldn't open your library." }
+        switch status {
+        case .unreadCount:
+            let unread = (try? library.fetch(FetchDescriptor<Article>(predicate: #Predicate { $0.isRead == false }))) ?? []
+            return VoiceAnswers.unread(LibraryVoiceQueries.unreadCount(in: unread))
+        case .refresh:
+            let ingest = IngestController.shared
+            return VoiceAnswers.refresh(isRefreshing: ingest.isRefreshing, lastSummary: ingest.lastSummary)
+        case .failingSources:
+            let sources = (try? library.fetch(FetchDescriptor<Source>())) ?? []
+            let names = sources.filter { $0.isEnabled && $0.sourceKind.isPolled && $0.lastError != nil }
+                .map { $0.title.isEmpty ? $0.url : $0.title }
+                .sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+            return VoiceAnswers.failingSources(names)
+        case .spendToday:
+            let budget = BudgetSettings.current
+            let spent = (try? budget.spentToday(context: library)) ?? 0
+            return VoiceAnswers.spend(spent: spent, cap: budget.capUSD)
+        }
+    }
+
+    /// Says the question and waits for a yes; the change is made only by `resolveConfirmation`.
+    private func askToConfirm(_ command: VoiceCommand, _ prompt: String) -> Outcome {
+        gate.ask(command, prompt: prompt, now: Date())
+        return .answer(prompt)
+    }
+
+    /// "Yes" runs what was asked; "no", or a yes that came too late, doesn't.
+    private func resolveConfirmation(yes: Bool) -> Outcome {
+        switch gate.answer(yes: yes, now: Date()) {
+        case .nothingToConfirm: return .answer("There's nothing to confirm.")
+        case .cancelled: return .answer("Cancelled.")
+        case .run(let action): return perform(confirmed: action)
+        }
+    }
+
+    /// The changes voice may make to your projects, after a yes.
+    private func perform(confirmed action: VoiceCommand) -> Outcome {
+        guard let project = openProject, let library else { return .answer(VoiceAnswers.noProjectOpen) }
+        switch action {
+        case .markItemDone(let number):
+            let items = ProjectVoiceQueries.openItems(of: project)
+            guard items.indices.contains(number - 1) else { return .answer("That item is no longer open.") }
+            items[number - 1].status = .done
+            try? library.save()
+            return .answer("Done. Marked number \(number) as done.")
+        case .acceptBriefUpdate:
+            guard let revision = BriefEditing.pending(for: project) else { return .answer(VoiceAnswers.noBriefUpdate) }
+            do {
+                try BriefEditing.accept(revision)
+                try? library.save()
+                return .answer("Accepted. The brief is updated.")
+            } catch {
+                return .answer(error.localizedDescription)
+            }
+        case .rejectBriefUpdate:
+            guard let revision = BriefEditing.pending(for: project) else { return .answer(VoiceAnswers.noBriefUpdate) }
+            do {
+                try BriefEditing.reject(revision)
+                try? library.save()
+                return .answer("Rejected. The brief is unchanged.")
+            } catch {
+                return .answer(error.localizedDescription)
+            }
+        default:
+            return .answer("There's nothing to confirm.")
+        }
+    }
+
     /// One notch of speech speed, kept within a range that stays understandable.
     private func changeSpeed(_ change: VoiceSpeedChange) {
         let step: Float = 0.05
