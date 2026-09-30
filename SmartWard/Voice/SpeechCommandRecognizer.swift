@@ -48,7 +48,8 @@ final class SpeechCommandRecognizer {
     static let vocabulary = [
         "SmartWard", "SmartWard open Reading", "SmartWard go back", "SmartWard read this article",
         "SmartWard read the summary", "SmartWard what can I say", "SmartWard stop listening",
-        "keep going", "stop reading",
+        "SmartWard brief me", "SmartWard read today's digest", "keep going", "stop reading", "next article",
+        "tell me more", "dismiss",
     ]
 
     private(set) var isRunning = false

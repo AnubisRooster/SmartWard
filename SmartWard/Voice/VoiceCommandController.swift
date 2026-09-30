@@ -30,8 +30,8 @@ extension AppTab {
 }
 
 /// Controls the app by voice: "SmartWard, open Reading", "SmartWard, open the
-/// second one", "SmartWard, read this article", and, while an article is being
-/// read, "pause" and "keep going" with no wake word.
+/// second one", "SmartWard, read this article", "SmartWard, brief me", and, while
+/// something is being read, "pause", "keep going", "next" with no wake word.
 ///
 /// It listens (`SpeechCommandRecognizer`, on-device only) while it's switched
 /// on in Settings and the app is in front and unlocked, works out what a phrase
@@ -205,6 +205,7 @@ final class VoiceCommandController {
         return VoiceContext(tab: navigation.tab.voiceTab,
                             isReaderOpen: navigation.readerArticle != nil,
                             isReading: readout.isActive,
+                            isBriefing: readout.isBriefing,
                             isArmed: Date() < armedUntil,
                             spokenNow: readout.currentText,
                             items: navigation.listedArticles.map(\.title),
@@ -222,6 +223,60 @@ final class VoiceCommandController {
         guard let library else { return [] }
         let projects = (try? library.fetch(FetchDescriptor<Project>(sortBy: [SortDescriptor(\.name)]))) ?? []
         return projects.map(\.name)
+    }
+
+    private func latestDigest() -> Digest? {
+        guard let library else { return nil }
+        var descriptor = FetchDescriptor<Digest>(sortBy: [SortDescriptor(\.createdAt, order: .reverse)])
+        descriptor.fetchLimit = 1
+        return (try? library.fetch(descriptor))?.first
+    }
+
+    /// "Brief me": your top unread articles, gist first.
+    private func startBriefing() -> Outcome {
+        guard let library else { return .said("I couldn't open your library.") }
+        let unread = (try? library.fetch(FetchDescriptor<Article>(predicate: #Predicate { $0.isRead == false }))) ?? []
+        let queue = ArticleBriefing.queue(from: unread)
+        guard !queue.isEmpty, ArticleReadoutController.shared.startBriefing(queue) else {
+            return .said("You're all caught up. There's nothing unread.")
+        }
+        return .silent(VoiceCommand.startBriefing.confirmation)
+    }
+
+    /// What Siri's "Brief me" does once the app is open in front of you.
+    func beginRequestedBriefing() {
+        present(startBriefing())
+    }
+
+    /// One notch of speech speed, kept within a range that stays understandable.
+    private func changeSpeed(_ change: VoiceSpeedChange) {
+        let step: Float = 0.05
+        let current = VoiceSettings.current.ttsRate
+        let target: Float
+        switch change {
+        case .faster: target = current + step
+        case .slower: target = current - step
+        case .normal: target = VoiceSettings.defaults.ttsRate
+        }
+        UserDefaults.standard.set(Double(min(max(target, 0.3), 0.7)), forKey: VoiceSettings.ttsRateKey)
+    }
+
+    /// Fetches the page behind a teaser; in a briefing, then reads it.
+    private func loadFullText(of article: Article, in library: ModelContext) {
+        Task { @MainActor [weak self] in
+            do {
+                try await IngestController.shared.loadFullText(of: article, context: library)
+                guard let self else { return }
+                let readout = ArticleReadoutController.shared
+                if readout.currentArticle?.id == article.id, readout.expandCurrentToFull() {
+                    self.present(.silent("Reading the full article"))
+                } else {
+                    self.present(.said("Loaded the full article"))
+                }
+            } catch {
+                self?.present(.said(error.localizedDescription))
+            }
+        }
     }
 
     private func run(_ command: VoiceCommand, context: VoiceContext) {
@@ -323,11 +378,73 @@ final class VoiceCommandController {
             return .silent(command.confirmation)
 
         case .star(let on):
-            guard let article = navigation.readerArticle else { return .said("Open an article first.") }
+            guard let article = readout.currentArticle ?? navigation.readerArticle else {
+                return .said("Open an article first.")
+            }
             if article.isStarred != on {
                 article.isStarred = on
                 if on, let library { library.insert(ReadingSignal(articleID: article.id, kind: "star")) }
             }
+            return .said(command.confirmation)
+
+        case .startBriefing:
+            return startBriefing()
+
+        case .readDigest:
+            guard let digest = latestDigest(), !digest.clusters.isEmpty else {
+                return .said("There's no digest yet.")
+            }
+            guard readout.startDigest(digest) else { return .said("There's no digest yet.") }
+            return .silent(command.confirmation)
+
+        case .nextArticle:
+            guard readout.isBriefing else { return .said("That works in a briefing. Say SmartWard, brief me.") }
+            readout.nextItem()
+            return .silent(command.confirmation)
+
+        case .previousArticle:
+            guard readout.isBriefing else { return .said("That works in a briefing. Say SmartWard, brief me.") }
+            readout.previousItem()
+            return .silent(command.confirmation)
+
+        case .repeatItem:
+            guard readout.isBriefing else { return .said("Nothing to repeat.") }
+            readout.repeatItem()
+            return .silent(command.confirmation)
+
+        case .readFullItem:
+            guard readout.expandCurrentToFull() else {
+                return .said("I can read a whole article when you're in an article briefing.")
+            }
+            return .silent(command.confirmation)
+
+        case .dismiss:
+            guard let article = readout.currentArticle ?? navigation.readerArticle else {
+                return .said("There's no article to dismiss.")
+            }
+            let inBriefing = readout.currentArticle?.id == article.id
+            article.isRead = true
+            library?.insert(ReadingSignal(articleID: article.id, kind: "dismiss"))
+            if inBriefing { readout.nextItem() }
+            return .said(command.confirmation)
+
+        case .markUnread:
+            guard let article = readout.currentArticle ?? navigation.readerArticle else {
+                return .said("Open an article first.")
+            }
+            article.isRead = false
+            return .said(command.confirmation)
+
+        case .loadFullArticle:
+            guard let article = readout.currentArticle ?? navigation.readerArticle, let library else {
+                return .said("Open an article first.")
+            }
+            loadFullText(of: article, in: library)
+            return .said(command.confirmation)
+
+        case .setSpeed(let change):
+            changeSpeed(change)
+            readout.restartSegment()
             return .said(command.confirmation)
 
         case .help:
