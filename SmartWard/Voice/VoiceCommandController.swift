@@ -6,6 +6,8 @@ import UIKit
 import Observation
 import KnowledgeStore
 import Pipeline
+import StrategistCore
+import VoiceLoopKit
 
 extension AppTab {
     init(_ tab: VoiceTab) {
@@ -78,6 +80,8 @@ final class VoiceCommandController {
     @ObservationIgnored private var armedUntil = Date.distantPast
     @ObservationIgnored private var armedGeneration = 0
     @ObservationIgnored private var captionGeneration = 0
+    /// A change waiting for its yes (`VoiceConfirmationGate`).
+    @ObservationIgnored private var gate = VoiceConfirmationGate()
     /// A question is with the strategist; one at a time.
     @ObservationIgnored private var isAsking = false
     @ObservationIgnored private var interruptionObserver: NSObjectProtocol?
@@ -179,7 +183,14 @@ final class VoiceCommandController {
         case .command(let command):
             disarm()
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-            run(command, context: context)
+            switch command {
+            case .confirm, .decline:
+                present(resolveConfirmation(yes: command == .confirm))
+            default:
+                // Anything but a yes or no drops what was waiting.
+                gate.cancel()
+                run(command, context: context)
+            }
         case .unrecognized(let words):
             disarm()
             UINotificationFeedbackGenerator().notificationOccurred(.warning)
@@ -212,6 +223,8 @@ final class VoiceCommandController {
                             isReaderOpen: navigation.readerArticle != nil,
                             isReading: readout.isActive,
                             isBriefing: readout.isBriefing,
+                            isProjectOpen: openProject != nil,
+                            isConfirming: gate.isWaiting(now: Date()),
                             isArmed: Date() < armedUntil,
                             spokenNow: readout.currentText,
                             items: navigation.listedArticles.map(\.title),
@@ -219,6 +232,13 @@ final class VoiceCommandController {
     }
 
     // MARK: Doing it
+
+    /// The project whose card is showing.
+    private var openProject: Project? {
+        let navigation = AppNavigation.shared
+        guard navigation.tab == .projects, !navigation.projectsPath.isEmpty else { return nil }
+        return navigation.projectOpen
+    }
 
     private var library: ModelContext? {
         guard case .success(let container) = AppStore.container else { return nil }
@@ -309,6 +329,54 @@ final class VoiceCommandController {
             let budget = BudgetSettings.current
             let spent = (try? budget.spentToday(context: library)) ?? 0
             return VoiceAnswers.spend(spent: spent, cap: budget.capUSD)
+        }
+    }
+
+    /// Says the question and waits for a yes; the change is made only by `resolveConfirmation`.
+    private func askToConfirm(_ command: VoiceCommand, _ prompt: String) -> Outcome {
+        gate.ask(command, prompt: prompt, now: Date())
+        return .answer(prompt)
+    }
+
+    /// "Yes" runs what was asked; "no", or a yes that came too late, doesn't.
+    private func resolveConfirmation(yes: Bool) -> Outcome {
+        switch gate.answer(yes: yes, now: Date()) {
+        case .nothingToConfirm: return .answer("There's nothing to confirm.")
+        case .cancelled: return .answer("Cancelled.")
+        case .run(let action): return perform(confirmed: action)
+        }
+    }
+
+    /// The changes voice may make to your projects, after a yes.
+    private func perform(confirmed action: VoiceCommand) -> Outcome {
+        guard let project = openProject, let library else { return .answer(VoiceAnswers.noProjectOpen) }
+        switch action {
+        case .markItemDone(let number):
+            let items = ProjectVoiceQueries.openItems(of: project)
+            guard items.indices.contains(number - 1) else { return .answer("That item is no longer open.") }
+            items[number - 1].status = .done
+            try? library.save()
+            return .answer("Done. Marked number \(number) as done.")
+        case .acceptBriefUpdate:
+            guard let revision = BriefEditing.pending(for: project) else { return .answer(VoiceAnswers.noBriefUpdate) }
+            do {
+                try BriefEditing.accept(revision)
+                try? library.save()
+                return .answer("Accepted. The brief is updated.")
+            } catch {
+                return .answer(error.localizedDescription)
+            }
+        case .rejectBriefUpdate:
+            guard let revision = BriefEditing.pending(for: project) else { return .answer(VoiceAnswers.noBriefUpdate) }
+            do {
+                try BriefEditing.reject(revision)
+                try? library.save()
+                return .answer("Rejected. The brief is unchanged.")
+            } catch {
+                return .answer(error.localizedDescription)
+            }
+        default:
+            return .answer("There's nothing to confirm.")
         }
     }
 
@@ -541,6 +609,50 @@ final class VoiceCommandController {
                 return .answer("I couldn't find a theme called \(words).")
             }
             return .answer(VoiceAnswers.about(theme))
+
+        case .readBrief:
+            guard let project = openProject else { return .answer(VoiceAnswers.noProjectOpen) }
+            let markdown = project.brief?.markdown.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            guard !markdown.isEmpty else { return .answer(VoiceAnswers.noBrief) }
+            let text = SpeechService.speakableText("Brief for \(project.name). \n\n" + markdown)
+            guard readout.startAnswer(text, title: "\(project.name) brief") else { return .answer(VoiceAnswers.noBrief) }
+            return .silent(command.confirmation)
+
+        case .readOpenItems:
+            guard let project = openProject else { return .answer(VoiceAnswers.noProjectOpen) }
+            return .answer(VoiceAnswers.openItems(ProjectVoiceQueries.openItems(of: project).map { (kind: $0.kind, text: $0.text) }))
+
+        case .readProjectReading:
+            guard let project = openProject, let library else { return .answer(VoiceAnswers.noProjectOpen) }
+            let related = ProjectVoiceQueries.relatedArticles(of: project, context: library)
+            guard !related.isEmpty, readout.startBriefing(related) else { return .answer(VoiceAnswers.nothingRelated) }
+            return .silent(command.confirmation)
+
+        case .readBriefUpdate:
+            guard let project = openProject else { return .answer(VoiceAnswers.noProjectOpen) }
+            guard let revision = BriefEditing.pending(for: project) else { return .answer(VoiceAnswers.noBriefUpdate) }
+            let counts = BriefDiff.counts(BriefDiff.lines(from: revision.baseMarkdown, to: revision.proposedMarkdown))
+            return .answer(VoiceAnswers.briefUpdate(rationale: revision.rationale, added: counts.added,
+                                                    removed: counts.removed))
+
+        case .markItemDone(let number):
+            guard let project = openProject else { return .answer(VoiceAnswers.noProjectOpen) }
+            let items = ProjectVoiceQueries.openItems(of: project)
+            guard items.indices.contains(number - 1) else {
+                return .answer("There's no open item number \(number).")
+            }
+            let item = items[number - 1]
+            return askToConfirm(command, VoiceAnswers.confirmMarkDone(number: number, kind: item.kind, text: item.text))
+
+        case .acceptBriefUpdate, .rejectBriefUpdate:
+            guard let project = openProject else { return .answer(VoiceAnswers.noProjectOpen) }
+            guard BriefEditing.pending(for: project) != nil else { return .answer(VoiceAnswers.noBriefUpdate) }
+            return askToConfirm(command, command == .acceptBriefUpdate ? VoiceAnswers.confirmAccept
+                                                                       : VoiceAnswers.confirmReject)
+
+        case .confirm, .decline:
+            // Handled where a phrase arrives; only reached if run some other way.
+            return .said("There's nothing to confirm.")
 
         case .help:
             let lines = VoiceCommandHelp.lines(for: context)

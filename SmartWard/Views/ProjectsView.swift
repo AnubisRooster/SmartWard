@@ -144,6 +144,12 @@ struct ProjectDetailView: View {
             GitHubProjectSection(project: project)
         }
         .navigationTitle(project.name)
+        // Which card is open, for spoken commands like "read the brief".
+        .onAppear { AppNavigation.shared.projectOpen = project }
+        .onDisappear {
+            let navigation = AppNavigation.shared
+            if navigation.projectOpen?.id == project.id, navigation.projectsPath.isEmpty { navigation.projectOpen = nil }
+        }
         .sheet(item: $editingLink) { link in
             EditLinkView(link: link)
         }
