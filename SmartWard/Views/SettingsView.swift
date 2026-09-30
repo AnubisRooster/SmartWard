@@ -35,6 +35,7 @@ struct SettingsView: View {
                 ActionApprovalSettingsSection()
                 VoiceSettingsSection()
                 VoiceNavigationSettingsSection()
+                BriefingSettingsSection()
                 SecuritySettingsSection()
                 Section {
                     Button("Run setup again") { onboardingCompleted = false }

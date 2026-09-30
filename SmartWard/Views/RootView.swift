@@ -49,12 +49,6 @@ struct RootView: View {
             && !lock.isLocked && !lock.isObscured && !audio.voiceChatActive
     }
 
-    /// Siri asked for a briefing, and the app is now in front and unlocked to give it.
-    private var briefingReady: Bool {
-        navigation.briefingRequested && onboardingCompleted && scenePhase == .active
-            && !lock.isLocked && !lock.isObscured
-    }
-
     var body: some View {
         tabs
         .fullScreenCover(isPresented: Binding(get: { !onboardingCompleted },
@@ -65,22 +59,20 @@ struct RootView: View {
         .onChange(of: [lock.isLocked, lock.isObscured]) { _, state in
             LockWindow.update(isLocked: state[0], isObscured: state[1])
         }
-        .onChange(of: briefingReady, initial: true) { _, ready in
-            guard ready else { return }
-            navigation.briefingRequested = false
-            VoiceCommandController.shared.beginRequestedBriefing()
-        }
         .onChange(of: shouldListenByVoice, initial: true) { _, listen in
             VoiceCommandController.shared.reconcile(shouldListen: listen)
         }
-        // A briefing, like any reading aloud, never outlives the app being in
-        // front and unlocked.
+        // Reading aloud never outlives the app being unlocked; only a briefing may go on
+        // with the app in the background (`BriefingLauncher`).
         .onChange(of: lock.isLocked) { _, locked in
             if locked { ArticleReadoutController.shared.stop() }
         }
         .onChange(of: scenePhase, initial: true) { _, phase in
             lock.handle(phase)
-            if phase == .background { ArticleReadoutController.shared.stop() }
+            let readout = ArticleReadoutController.shared
+            if phase == .background, !readout.isBriefing { readout.stop() }
+            // Back in front, past SmartWard's lock or not: the lock screen's time limit no longer applies.
+            if phase == .active { readout.cancelScheduledStop() }
             // Right away, not on the next view update: the app-switcher
             // snapshot is taken as the app leaves the foreground.
             LockWindow.update(isLocked: lock.isLocked, isObscured: lock.isObscured)

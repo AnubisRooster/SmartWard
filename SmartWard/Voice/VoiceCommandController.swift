@@ -327,18 +327,10 @@ final class VoiceCommandController {
 
     /// "Brief me": your top unread articles, gist first.
     private func startBriefing() -> Outcome {
-        guard let library else { return .said("I couldn't open your library.") }
-        let unread = (try? library.fetch(FetchDescriptor<Article>(predicate: #Predicate { $0.isRead == false }))) ?? []
-        let queue = ArticleBriefing.queue(from: unread)
-        guard !queue.isEmpty, ArticleReadoutController.shared.startBriefing(queue) else {
-            return .said("You're all caught up. There's nothing unread.")
+        switch BriefingLauncher.start(fromSiri: false) {
+        case .success: return .silent(VoiceCommand.startBriefing.confirmation)
+        case .failure(let refusal): return .said(refusal.localizedDescription)
         }
-        return .silent(VoiceCommand.startBriefing.confirmation)
-    }
-
-    /// What Siri's "Brief me" does once the app is open in front of you.
-    func beginRequestedBriefing() {
-        present(startBriefing())
     }
 
     /// Runs the search the Reading tab is showing, and says what it found, so
