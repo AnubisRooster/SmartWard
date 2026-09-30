@@ -6,9 +6,10 @@ struct ProjectsView: View {
     @Environment(\.modelContext) private var context
     @Query(sort: \Project.createdAt, order: .reverse) private var projects: [Project]
     @State private var isAdding = false
+    @State private var navigation = AppNavigation.shared
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $navigation.projectsPath) {
             List {
                 ForEach(projects) { project in
                     NavigationLink(value: project) {
@@ -35,6 +36,9 @@ struct ProjectsView: View {
             }
             .navigationDestination(for: Article.self) { article in
                 ArticleReaderView(article: article)
+            }
+            .navigationDestination(for: ProjectRoute.self) { route in
+                ProjectRouteView(route: route)
             }
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {

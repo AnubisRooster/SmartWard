@@ -10,19 +10,17 @@ struct TodayView: View {
     @Query(sort: \Digest.periodEnd, order: .reverse) private var digests: [Digest]
     @State private var controller = DigestController.shared
     @State private var showSettings = false
+    @State private var navigation = AppNavigation.shared
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $navigation.todayPath) {
             List {
                 if let latest = digests.first {
                     DigestSections(digest: latest)
                     if digests.count > 1 {
                         Section("Earlier") {
                             ForEach(digests.dropFirst().prefix(14)) { digest in
-                                NavigationLink {
-                                    List { DigestSections(digest: digest) }
-                                        .navigationTitle(digest.periodEnd.formatted(date: .abbreviated, time: .omitted))
-                                } label: {
+                                NavigationLink(value: digest) {
                                     DigestRow(digest: digest)
                                 }
                             }
@@ -49,6 +47,10 @@ struct TodayView: View {
             .navigationTitle("Today")
             .navigationDestination(for: Article.self) { article in
                 ArticleReaderView(article: article)
+            }
+            .navigationDestination(for: Digest.self) { digest in
+                List { DigestSections(digest: digest) }
+                    .navigationTitle(digest.periodEnd.formatted(date: .abbreviated, time: .omitted))
             }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {

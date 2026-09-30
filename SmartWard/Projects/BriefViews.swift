@@ -40,6 +40,30 @@ final class BriefController {
     }
 }
 
+/// The screens a project's brief pushes on the Projects stack. Values rather
+/// than destination-style links, so the stack's path
+/// (`AppNavigation.projectsPath`) holds them and going back can see them.
+enum ProjectRoute: Hashable {
+    case briefReview(BriefRevision)
+    case briefHistory(Project)
+    case briefVersion(Project, BriefRevision)
+}
+
+struct ProjectRouteView: View {
+    let route: ProjectRoute
+
+    var body: some View {
+        switch route {
+        case .briefReview(let revision):
+            BriefReviewView(revision: revision)
+        case .briefHistory(let project):
+            BriefHistoryView(project: project)
+        case .briefVersion(let project, let revision):
+            BriefVersionView(project: project, revision: revision)
+        }
+    }
+}
+
 /// The project's living brief: the current text, a suggestion waiting for
 /// review, and ways to edit, ask for a revision, or look back.
 struct BriefSection: View {
@@ -55,9 +79,7 @@ struct BriefSection: View {
         let fresh = BriefEditing.newItems(for: project).count
         Section {
             if let pending {
-                NavigationLink {
-                    BriefReviewView(revision: pending)
-                } label: {
+                NavigationLink(value: ProjectRoute.briefReview(pending)) {
                     let counts = BriefDiff.counts(BriefDiff.lines(from: pending.baseMarkdown, to: pending.proposedMarkdown))
                     Label {
                         VStack(alignment: .leading, spacing: 2) {
@@ -92,7 +114,7 @@ struct BriefSection: View {
             }
             .disabled(controller.isSuggesting)
             if !BriefEditing.history(for: project).isEmpty {
-                NavigationLink("History") { BriefHistoryView(project: project) }
+                NavigationLink("History", value: ProjectRoute.briefHistory(project))
             }
         } header: {
             Text("Brief")
@@ -259,9 +281,7 @@ struct BriefHistoryView: View {
 
     var body: some View {
         List(BriefEditing.history(for: project)) { revision in
-            NavigationLink {
-                BriefVersionView(project: project, revision: revision)
-            } label: {
+            NavigationLink(value: ProjectRoute.briefVersion(project, revision)) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(revision.rationale.isEmpty ? "Edited by \(BriefOrigin.label(revision.origin))" : revision.rationale)
                         .lineLimit(2)
