@@ -34,6 +34,7 @@ struct SettingsView: View {
                 GitHubSettingsSection()
                 ActionApprovalSettingsSection()
                 VoiceSettingsSection()
+                VoiceNavigationSettingsSection()
                 SecuritySettingsSection()
                 Section {
                     Button("Run setup again") { onboardingCompleted = false }

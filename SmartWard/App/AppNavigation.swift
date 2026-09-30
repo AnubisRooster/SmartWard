@@ -42,12 +42,30 @@ final class AppNavigation {
 
     var readingFilter: ReadingFilter = .unread
 
+    /// The article open in the reader right now, if any (set by the reader).
+    var readerArticle: Article?
+    /// The articles listed in the Reading tab, in the order shown (set by
+    /// the list), so "open the second one" knows what "second" is.
+    var listedArticles: [Article] = []
+
     /// A chat to open in the Chat tab; cleared once it's shown.
     var conversationToOpen: UUID?
 
     func openChat(_ id: UUID) {
         conversationToOpen = id
         tab = .chat
+    }
+
+    /// Shows `tab` at its top level, whatever was pushed on it.
+    func show(_ tab: AppTab) {
+        self.tab = tab
+        switch tab {
+        case .today: todayPath = NavigationPath()
+        case .reading: readingPath = NavigationPath()
+        case .projects: projectsPath = NavigationPath()
+        case .chat: chatPath = NavigationPath()
+        case .graph: break
+        }
     }
 
     /// Shows `article` in the reader, on top of the Reading list.

@@ -24,6 +24,13 @@ enum VoiceSettings {
                                voiceID: store.string(forKey: voiceIDKey) ?? defaults.voiceID)
     }
 
+    /// The chosen voice, or the best English one installed.
+    @MainActor
+    static func voice(for identifier: String) -> AVSpeechSynthesisVoice? {
+        guard !identifier.isEmpty else { return SpeechService.bestAvailableVoice() }
+        return AVSpeechSynthesisVoice(identifier: identifier) ?? SpeechService.bestAvailableVoice()
+    }
+
     static func englishVoices() -> [AVSpeechSynthesisVoice] {
         AVSpeechSynthesisVoice.speechVoices()
             .filter { $0.language.hasPrefix("en") }

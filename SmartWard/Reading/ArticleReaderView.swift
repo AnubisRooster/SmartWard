@@ -12,16 +12,13 @@ struct ArticleReaderView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var ingest = IngestController.shared
     @State private var readout = ArticleReadoutController.shared
+    @State private var navigation = AppNavigation.shared
     @State private var lock = AppLockController.shared
     @State private var isLoadingFullText = false
     @State private var fullTextError: String?
     @State private var recordedOpen = false
 
     private var paragraphs: [String] { ArticleReadout.paragraphs(of: article) }
-
-    private var sourceLabel: String? {
-        article.source.map { $0.title.isEmpty ? $0.sourceKind.displayName : $0.title }
-    }
 
     /// This article is being read aloud (or is paused mid-reading).
     private var isReading: Bool { readout.articleID == article.id && readout.isActive }
@@ -93,9 +90,14 @@ struct ArticleReaderView: View {
         .safeAreaInset(edge: .bottom) {
             if isReading { readoutBar }
         }
+        // Spoken commands ("read this article", "star this") act on the open article.
+        .onAppear { navigation.readerArticle = article }
         // Reading aloud never outlives this screen, or the app being in
         // front and unlocked.
-        .onDisappear { stopReading() }
+        .onDisappear {
+            stopReading()
+            if navigation.readerArticle?.id == article.id { navigation.readerArticle = nil }
+        }
         .onChange(of: scenePhase) { _, phase in
             if phase != .active { stopReading() }
         }
@@ -137,7 +139,7 @@ struct ArticleReaderView: View {
     }
 
     private func startReading(_ scope: ReadoutScope) {
-        readout.start(article, scope: scope, sourceName: sourceLabel)
+        readout.start(article, scope: scope, sourceName: article.sourceLabel)
     }
 
     private func stopReading() {

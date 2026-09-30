@@ -66,8 +66,8 @@ targets:
         CODE_SIGN_ENTITLEMENTS: SmartWard/SmartWard.entitlements
         INFOPLIST_KEY_CFBundleDisplayName: SmartWard
         INFOPLIST_KEY_NSFaceIDUsageDescription: "SmartWard uses Face ID to unlock your research and conversations."
-        INFOPLIST_KEY_NSMicrophoneUsageDescription: "SmartWard uses the microphone so you can talk to the strategist instead of typing."
-        INFOPLIST_KEY_NSSpeechRecognitionUsageDescription: "SmartWard transcribes what you say, on-device when possible, so you can talk to the strategist instead of typing."
+        INFOPLIST_KEY_NSMicrophoneUsageDescription: "SmartWard uses the microphone so you can talk to the strategist instead of typing, and, if you turn on voice navigation, control the app by voice."
+        INFOPLIST_KEY_NSSpeechRecognitionUsageDescription: "SmartWard transcribes what you say, on-device when possible, so you can talk to the strategist instead of typing. Voice navigation always transcribes on-device."
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
         INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait

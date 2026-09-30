@@ -88,6 +88,10 @@ struct ReadingView: View {
             .navigationDestination(for: Article.self) { article in
                 ArticleReaderView(article: article)
             }
+            // What's listed, in order, for spoken commands like "open the second one".
+            .onChange(of: visible.map(\.id), initial: true) {
+                navigation.listedArticles = visible
+            }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("Sources", systemImage: "dot.radiowaves.up.forward") { showingSources = true }

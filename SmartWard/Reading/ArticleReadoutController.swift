@@ -29,9 +29,11 @@ final class ArticleReadoutController {
     var isPaused: Bool { playback.status == .paused }
     /// Where on the reader screen the voice is, so the screen can follow.
     var currentAnchor: ReadoutSegment.Anchor? { playback.current?.anchor }
+    /// The words being said right now, so the listener can tell its own voice from yours.
+    var currentText: String { playback.current?.text ?? "" }
 
     @ObservationIgnored private let synthesizer = AVSpeechSynthesizer()
-    @ObservationIgnored private let delegate = SynthesizerDelegate()
+    @ObservationIgnored private let delegate = SpeechFinishDelegate()
     @ObservationIgnored private var currentUtterance: AVSpeechUtterance?
     @ObservationIgnored private var remoteTargets: [(command: MPRemoteCommand, token: Any)] = []
     @ObservationIgnored private var observers: [NSObjectProtocol] = []
@@ -74,7 +76,7 @@ final class ArticleReadoutController {
         guard playback.status == .paused else { return }
         playback.resume()
         // A call or another app may have taken the audio session meanwhile.
-        try? AVAudioSession.sharedInstance().setActive(true)
+        AppAudio.shared.configure(speaking: true)
         if synthesizer.isPaused {
             synthesizer.continueSpeaking()
         } else {
@@ -119,17 +121,12 @@ final class ArticleReadoutController {
         let utterance = AVSpeechUtterance(string: segment.text)
         utterance.rate = config.ttsRate
         utterance.pitchMultiplier = config.ttsPitch
-        utterance.voice = voice(for: config.voiceID)
+        utterance.voice = VoiceSettings.voice(for: config.voiceID)
         // The old utterance stays referenced until this point, so the new
         // one can't share its identity with a callback still on its way.
         currentUtterance = utterance
         synthesizer.stopSpeaking(at: .immediate)
         synthesizer.speak(utterance)
-    }
-
-    private func voice(for identifier: String) -> AVSpeechSynthesisVoice? {
-        guard !identifier.isEmpty else { return SpeechService.bestAvailableVoice() }
-        return AVSpeechSynthesisVoice(identifier: identifier) ?? SpeechService.bestAvailableVoice()
     }
 
     private func utteranceFinished(_ id: ObjectIdentifier) {
@@ -154,13 +151,7 @@ final class ArticleReadoutController {
     // MARK: Audio session, interruptions, headphone buttons
 
     private func activateAudio() {
-        let session = AVAudioSession.sharedInstance()
-        do {
-            try session.setCategory(.playback, mode: .spokenAudio, options: [.duckOthers])
-            try session.setActive(true)
-        } catch {
-            // Not fatal: the synthesizer can still speak in the default session.
-        }
+        AppAudio.shared.configure(speaking: true)
         let center = NotificationCenter.default
         observers.append(center.addObserver(forName: AVAudioSession.interruptionNotification, object: nil,
                                             queue: .main) { [weak self] note in
@@ -216,12 +207,12 @@ final class ArticleReadoutController {
         for observer in observers { NotificationCenter.default.removeObserver(observer) }
         observers = []
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
-        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        AppAudio.shared.releaseIfIdle()
     }
 }
 
 /// `AVSpeechSynthesizer` keeps its delegate weakly and wants an `NSObject`.
-private final class SynthesizerDelegate: NSObject, AVSpeechSynthesizerDelegate {
+final class SpeechFinishDelegate: NSObject, AVSpeechSynthesizerDelegate {
     var onFinish: ((ObjectIdentifier) -> Void)?
 
     func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {

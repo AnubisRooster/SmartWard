@@ -6,8 +6,21 @@ struct RootView: View {
     @Environment(\.modelContext) private var context
     @State private var lock = AppLockController.shared
     @State private var navigation = AppNavigation.shared
+    @State private var audio = AppAudio.shared
+    @AppStorage(VoiceCommandController.enabledKey) private var voiceEnabled = false
 
-    var body: some View {
+    /// The tab bar, with the voice control above it (shown while voice
+    /// navigation is on).
+    @ViewBuilder
+    private var tabs: some View {
+        if #available(iOS 26.1, *) {
+            tabView.tabViewBottomAccessory(isEnabled: voiceEnabled) { VoiceCommandBar() }
+        } else {
+            tabView.tabViewBottomAccessory { VoiceCommandBar() }
+        }
+    }
+
+    private var tabView: some View {
         // Five tabs fit an iPhone tab bar without a "More" tab; Settings is
         // behind the gear on Today.
         TabView(selection: $navigation.tab) {
@@ -27,6 +40,17 @@ struct RootView: View {
                 ProjectsView()
             }
         }
+    }
+
+    /// Voice navigation listens only while it's switched on and the app is in
+    /// front and unlocked, and no voice chat has the microphone.
+    private var shouldListenByVoice: Bool {
+        voiceEnabled && onboardingCompleted && scenePhase == .active
+            && !lock.isLocked && !lock.isObscured && !audio.voiceChatActive
+    }
+
+    var body: some View {
+        tabs
         .fullScreenCover(isPresented: Binding(get: { !onboardingCompleted },
                                               set: { onboardingCompleted = !$0 })) {
             OnboardingView()
@@ -34,6 +58,9 @@ struct RootView: View {
         // In its own window, so it covers sheets and full-screen covers too.
         .onChange(of: [lock.isLocked, lock.isObscured]) { _, state in
             LockWindow.update(isLocked: state[0], isObscured: state[1])
+        }
+        .onChange(of: shouldListenByVoice, initial: true) { _, listen in
+            VoiceCommandController.shared.reconcile(shouldListen: listen)
         }
         .onChange(of: scenePhase, initial: true) { _, phase in
             lock.handle(phase)
