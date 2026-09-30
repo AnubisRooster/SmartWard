@@ -1,6 +1,7 @@
 import Foundation
 import Speech
 import AVFoundation
+import Pipeline
 
 /// Listens to the microphone continuously and hands over each phrase.
 ///
@@ -41,15 +42,19 @@ final class SpeechCommandRecognizer {
 
     /// A pause this long ends a phrase.
     static let phraseSilence: TimeInterval = 0.9
+    /// A question for the strategist takes longer to say and to think through.
+    static let questionSilence: TimeInterval = 1.8
     /// Commands are short; a phrase running longer than this is something else (the app's own voice, say).
     static let maxWords = 24
+    static let maxQuestionWords = 60
     static let maxFailures = 3
     /// Words the recognizer should expect, so "SmartWard" isn't heard as "smart word".
     static let vocabulary = [
         "SmartWard", "SmartWard open Reading", "SmartWard go back", "SmartWard read this article",
         "SmartWard read the summary", "SmartWard what can I say", "SmartWard stop listening",
         "SmartWard brief me", "SmartWard read today's digest", "keep going", "stop reading", "next article",
-        "tell me more", "dismiss",
+        "tell me more", "dismiss", "SmartWard ask the strategist", "SmartWard search for",
+        "SmartWard how many unread articles do I have",
     ]
 
     private(set) var isRunning = false
@@ -204,7 +209,8 @@ final class SpeechCommandRecognizer {
                 latest = text
                 onPartial?(text)
                 resetSilenceTimer()
-                if text.split(separator: " ").count > Self.maxWords {
+                let limit = VoiceCommandParser.isAsking(text) ? Self.maxQuestionWords : Self.maxWords
+                if text.split(separator: " ").count > limit {
                     endPhrase()
                     return
                 }
@@ -221,7 +227,8 @@ final class SpeechCommandRecognizer {
 
     private func resetSilenceTimer() {
         silenceTimer?.invalidate()
-        silenceTimer = Timer.scheduledTimer(withTimeInterval: Self.phraseSilence, repeats: false) { [weak self] _ in
+        let pause = VoiceCommandParser.isAsking(latest) ? Self.questionSilence : Self.phraseSilence
+        silenceTimer = Timer.scheduledTimer(withTimeInterval: pause, repeats: false) { [weak self] _ in
             Task { @MainActor in self?.endPhrase() }
         }
     }

@@ -41,6 +41,8 @@ final class AppNavigation {
     var chatPath = NavigationPath()
 
     var readingFilter: ReadingFilter = .unread
+    /// What's typed (or spoken) in the Reading tab's search field.
+    var readingQuery = ""
 
     /// The article open in the reader right now, if any (set by the reader).
     var readerArticle: Article?
