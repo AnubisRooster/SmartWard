@@ -74,6 +74,18 @@ struct OpenDigestIntent: AppIntent {
     }
 }
 
+struct BriefMeIntent: AppIntent {
+    static let title: LocalizedStringResource = "Brief Me"
+    static let description = IntentDescription("Reads your top unread articles aloud, a short gist of each.")
+    static let openAppWhenRun = true
+
+    @MainActor
+    func perform() async throws -> some IntentResult {
+        AppNavigation.shared.briefingRequested = true
+        return .result()
+    }
+}
+
 // MARK: Ask the strategist
 
 struct AskStrategistIntent: AppIntent {
@@ -197,6 +209,10 @@ struct SmartWardShortcuts: AppShortcutsProvider {
                     phrases: ["Open my \(.applicationName) digest", "What's new in \(.applicationName)"],
                     shortTitle: "Today's Digest",
                     systemImageName: "sun.max")
+        AppShortcut(intent: BriefMeIntent(),
+                    phrases: ["Brief me with \(.applicationName)", "Read my news in \(.applicationName)"],
+                    shortTitle: "Brief Me",
+                    systemImageName: "speaker.wave.2")
         AppShortcut(intent: AddSourceIntent(),
                     phrases: ["Add a source to \(.applicationName)", "Follow a feed in \(.applicationName)"],
                     shortTitle: "Add a Source",

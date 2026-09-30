@@ -48,6 +48,10 @@ final class AppNavigation {
     /// the list), so "open the second one" knows what "second" is.
     var listedArticles: [Article] = []
 
+    /// "Brief me" was asked for from outside the app (Siri, Shortcuts); the
+    /// root view starts the briefing once the app is in front and unlocked.
+    var briefingRequested = false
+
     /// A chat to open in the Chat tab; cleared once it's shown.
     var conversationToOpen: UUID?
 

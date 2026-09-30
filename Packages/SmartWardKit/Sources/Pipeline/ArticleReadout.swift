@@ -15,6 +15,10 @@ public struct ReadoutSegment: Equatable, Sendable, Identifiable {
     public let anchor: Anchor
     /// Ready to speak: cleaned of markdown, links and code.
     public let text: String
+    /// Which item of a briefing this belongs to (an article, a digest theme),
+    /// so "next article" can jump over the rest of it. A single article's
+    /// read-aloud is all group 0.
+    public var group = 0
 }
 
 public enum ReadoutScope: Equatable, Sendable {
@@ -247,6 +251,65 @@ public struct ReadoutPlayback: Equatable, Sendable {
         } else {
             status = .finished
         }
+    }
+}
+
+// MARK: Groups
+
+extension ReadoutPlayback {
+    /// The briefing item being read.
+    public var currentGroup: Int? { current?.group }
+
+    /// "Article 3 of 12", by group.
+    public var groupPosition: (number: Int, count: Int)? {
+        guard let group = currentGroup else { return nil }
+        let groups = segments.map(\.group).reduce(into: [Int]()) { if $1 != $0.last { $0.append($1) } }
+        guard let place = groups.firstIndex(of: group) else { return nil }
+        return (place + 1, groups.count)
+    }
+
+    /// Jumps to the start of the next item; from the last one it ends.
+    public mutating func nextGroup() {
+        guard isActive, let group = currentGroup else { return }
+        if let start = segments[(index + 1)...].firstIndex(where: { $0.group != group }) {
+            index = start
+            status = .playing
+        } else {
+            status = .finished
+        }
+    }
+
+    /// Jumps to the start of the previous item; from the first, to its own start.
+    public mutating func previousGroup() {
+        guard isActive, let group = currentGroup else { return }
+        let start = firstIndex(ofGroup: group)
+        index = start > 0 ? firstIndex(ofGroup: segments[start - 1].group) : start
+        status = .playing
+    }
+
+    /// Back to the start of the item being read.
+    public mutating func restartGroup() {
+        guard isActive, let group = currentGroup else { return }
+        index = firstIndex(ofGroup: group)
+        status = .playing
+    }
+
+    /// Swaps what's said for the current item (the gist, say) for something
+    /// else (the whole article), and starts it from the top.
+    public mutating func replaceCurrentGroup(with replacement: [ReadoutSegment]) {
+        guard isActive, let group = currentGroup, !replacement.isEmpty else { return }
+        let members = segments.indices.filter { segments[$0].group == group }
+        guard let first = members.first, let last = members.last else { return }
+        var updated = Array(segments[..<first])
+        updated += replacement.map { ReadoutSegment(id: 0, anchor: $0.anchor, text: $0.text, group: group) }
+        updated += Array(segments[(last + 1)...])
+        segments = updated.enumerated().map { ReadoutSegment(id: $0.offset, anchor: $0.element.anchor, text: $0.element.text, group: $0.element.group) }
+        index = first
+        status = .playing
+    }
+
+    private func firstIndex(ofGroup group: Int) -> Int {
+        segments.firstIndex { $0.group == group } ?? 0
     }
 }
 

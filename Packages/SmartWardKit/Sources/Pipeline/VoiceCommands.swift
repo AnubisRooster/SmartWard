@@ -20,6 +20,7 @@ public enum VoiceTab: String, CaseIterable, Equatable, Sendable {
 
 public enum VoiceReadingFilter: Equatable, Sendable { case unread, starred, all }
 public enum VoiceReadingOrder: Equatable, Sendable { case newest, mostRelevant }
+public enum VoiceSpeedChange: Equatable, Sendable { case faster, slower, normal }
 
 public enum VoiceCommand: Equatable, Sendable {
     case openTab(VoiceTab)
@@ -36,6 +37,21 @@ public enum VoiceCommand: Equatable, Sendable {
     case readAloud(summaryOnly: Bool)
     case pauseReading, resumeReading, stopReading, nextSection, previousSection
     case star(Bool)
+    /// A spoken briefing of the unread articles, gist first.
+    case startBriefing
+    /// Today's digest, a theme at a time.
+    case readDigest
+    /// Skip to the next / go back to the previous article of a briefing.
+    case nextArticle, previousArticle
+    /// Say the article being briefed again from its start.
+    case repeatItem
+    /// Swap the gist for the whole article.
+    case readFullItem
+    /// Mark the article read and move on.
+    case dismiss
+    case markUnread
+    case loadFullArticle
+    case setSpeed(VoiceSpeedChange)
     case help
     case stopListening
 
@@ -63,6 +79,21 @@ public enum VoiceCommand: Equatable, Sendable {
         case .nextSection: return "Next"
         case .previousSection: return "Previous"
         case .star(let on): return on ? "Starred" : "Unstarred"
+        case .startBriefing: return "Starting your briefing"
+        case .readDigest: return "Reading today's digest"
+        case .nextArticle: return "Next article"
+        case .previousArticle: return "Previous article"
+        case .repeatItem: return "Again"
+        case .readFullItem: return "Reading the full article"
+        case .dismiss: return "Dismissed"
+        case .markUnread: return "Marked unread"
+        case .loadFullArticle: return "Loading the full article"
+        case .setSpeed(let change):
+            switch change {
+            case .faster: return "Faster"
+            case .slower: return "Slower"
+            case .normal: return "Normal speed"
+            }
         case .help: return "Here's what you can say"
         case .stopListening: return "Voice off"
         }
@@ -76,6 +107,9 @@ public struct VoiceContext: Equatable, Sendable {
     public var isReaderOpen: Bool
     /// An article is being read aloud (or is paused mid-reading).
     public var isReading: Bool
+    /// The reading is a briefing (several articles, or the digest), so "next"
+    /// means the next article and "repeat" the same one again.
+    public var isBriefing: Bool
     /// The wake word was just heard, so the next phrase needs no prefix.
     public var isArmed: Bool
     /// The section being read right now.
@@ -85,10 +119,11 @@ public struct VoiceContext: Equatable, Sendable {
     public var projects: [String]
 
     public init(tab: VoiceTab = .today, isReaderOpen: Bool = false, isReading: Bool = false,
-                isArmed: Bool = false, spokenNow: String = "", items: [String] = [], projects: [String] = []) {
+                isBriefing: Bool = false, isArmed: Bool = false, spokenNow: String = "", items: [String] = [], projects: [String] = []) {
         self.tab = tab
         self.isReaderOpen = isReaderOpen
         self.isReading = isReading
+        self.isBriefing = isBriefing
         self.isArmed = isArmed
         self.spokenNow = spokenNow
         self.items = items
@@ -222,13 +257,61 @@ public enum VoiceCommandParser {
     ]
     /// Back a screen, or, while reading, back a section.
     static let backOrPrevious: Set<String> = ["back", "go back", "back up"]
-    static let backOnly: Set<String> = ["go up", "return", "close", "close this", "close article", "dismiss"]
+    static let backOnly: Set<String> = ["go up", "return", "close", "close this", "close article"]
+
+    // Hands-free reading.
+    static let briefing: Set<String> = [
+        "brief me", "give me a briefing", "give me my briefing", "start a briefing", "start my briefing",
+        "start the briefing", "read my news", "read me my news", "read me the news", "read the news",
+        "read my unread", "read my unread articles", "read me my unread articles", "catch me up", "whats new",
+        "brief me on my reading",
+    ]
+    static let digest: Set<String> = [
+        "read the digest", "read todays digest", "read me the digest", "read me todays digest", "read my digest",
+        "read the daily digest", "give me the digest", "give me todays digest", "whats in the digest",
+    ]
+    static let nextArticle: Set<String> = [
+        "next article", "next story", "next item", "skip article", "skip this article", "skip story", "skip this story",
+    ]
+    static let previousArticle: Set<String> = [
+        "previous article", "previous story", "previous item", "last article", "last story", "go back an article",
+    ]
+    /// In a briefing "next" and "skip" move to the next article, not the next paragraph.
+    static let nextInBriefing: Set<String> = ["next", "next one", "skip", "skip this", "skip ahead", "move on", "forward"]
+    static let previousInBriefing: Set<String> = ["previous", "previous one", "back", "go back", "back up"]
+    static let repeatWords: Set<String> = ["repeat", "repeat that", "say that again", "again", "repeat this", "say it again"]
+    /// The whole article; in a briefing, in place of the gist.
+    static let readMore: Set<String> = [
+        "read this one", "tell me more", "more detail", "read more", "go deeper", "read the full article",
+        "read the full text", "read the whole story", "read the full story",
+    ]
+    static let dismiss: Set<String> = [
+        "dismiss", "dismiss this", "dismiss it", "dismiss this article", "dismiss the article", "mark as read",
+        "mark read", "mark it read", "mark this read", "mark this as read", "mark it as read", "not interested",
+    ]
+    static let markUnread: Set<String> = [
+        "mark as unread", "mark unread", "mark it unread", "mark this unread", "mark this as unread",
+        "mark it as unread", "keep unread", "keep it unread", "keep this unread",
+    ]
+    static let loadFull: Set<String> = [
+        "load the full article", "load full article", "load the full text", "load full text", "get the full article",
+        "get the full text", "fetch the full article", "fetch the full text", "download the full article",
+        "download the full text",
+    ]
+    static let faster: Set<String> = ["faster", "speak faster", "read faster", "speed up", "go faster", "speed it up", "talk faster"]
+    static let slower: Set<String> = ["slower", "speak slower", "read slower", "slow down", "go slower", "slow it down", "talk slower"]
+    static let normalSpeed: Set<String> = [
+        "normal speed", "regular speed", "default speed", "reset speed", "normal pace", "speak normally",
+    ]
 
     /// Said with no wake word while something's being read.
     static let bareControls: Set<String> = [
         "pause", "stop", "hold on", "hang on", "wait", "quiet", "be quiet", "silence", "resume", "continue",
         "keep going", "keep reading", "go on", "carry on", "next", "next section", "next paragraph", "skip",
         "previous", "previous section", "go back", "back", "stop reading", "repeat", "repeat that",
+        "next article", "next story", "previous article", "previous story", "read this one", "tell me more",
+        "star it", "star this", "dismiss", "dismiss it", "mark as read", "mark read", "faster", "slower",
+        "speed up", "slow down", "normal speed",
     ]
 
     static let star: Set<String> = [
@@ -365,15 +448,32 @@ public enum VoiceCommandParser {
         if pause.contains(body) { return .pauseReading }
         if stopReading.contains(body) { return .stopReading }
         if resume.contains(body) { return .resumeReading }
+        if nextArticle.contains(body) { return .nextArticle }
+        if previousArticle.contains(body) { return .previousArticle }
+        if context.isBriefing {
+            if nextInBriefing.contains(body) { return .nextArticle }
+            if previousInBriefing.contains(body) { return .previousArticle }
+            if repeatWords.contains(body) { return .repeatItem }
+        }
         if next.contains(body) { return .nextSection }
         if previous.contains(body) { return .previousSection }
         if backOrPrevious.contains(body) { return context.isReading ? .previousSection : .back }
         if backOnly.contains(body) { return .back }
 
+        if briefing.contains(body) { return .startBriefing }
+        if digest.contains(body) { return .readDigest }
+        if readMore.contains(body) { return context.isBriefing ? .readFullItem : .readAloud(summaryOnly: false) }
+        if dismiss.contains(body) { return .dismiss }
+        if markUnread.contains(body) { return .markUnread }
+        if loadFull.contains(body) { return .loadFullArticle }
+        if faster.contains(body) { return .setSpeed(.faster) }
+        if slower.contains(body) { return .setSpeed(.slower) }
+        if normalSpeed.contains(body) { return .setSpeed(.normal) }
+
         if star.contains(body) { return .star(true) }
         if unstar.contains(body) { return .star(false) }
         if readSummary.contains(body) { return .readAloud(summaryOnly: true) }
-        if readWhole.contains(body) { return .readAloud(summaryOnly: false) }
+        if readWhole.contains(body) { return context.isBriefing ? .readFullItem : .readAloud(summaryOnly: false) }
         if refresh.contains(body) { return .refresh }
         if newestOrders.contains(body) { return .sortBy(.newest) }
         if relevantOrders.contains(body) { return .sortBy(.mostRelevant) }
@@ -451,6 +551,9 @@ public enum VoiceCommandHelp {
     /// Example phrases for what's on screen now, most relevant first.
     public static func lines(for context: VoiceContext) -> [String] {
         var lines: [String] = []
+        if context.isBriefing {
+            lines.append("Next, previous, repeat, tell me more, star it, dismiss, faster, slower (no need to say SmartWard)")
+        }
         if context.isReading {
             lines.append("Pause, keep going, next, previous, stop reading (no need to say SmartWard)")
         }
@@ -469,6 +572,8 @@ public enum VoiceCommandHelp {
             lines.append("SmartWard, open project inference stack")
         }
         lines.append("SmartWard, open Reading (or Today, Graph, Chat, Projects)")
+        lines.append("SmartWard, brief me")
+        lines.append("SmartWard, read today's digest")
         lines.append("SmartWard, go back")
         lines.append("SmartWard, what can I say?")
         lines.append("SmartWard, stop listening")

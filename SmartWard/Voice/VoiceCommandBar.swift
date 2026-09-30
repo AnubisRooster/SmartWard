@@ -4,6 +4,7 @@ import SwiftUI
 /// and a mic button to turn voice navigation off or on.
 struct VoiceCommandBar: View {
     @State private var voice = VoiceCommandController.shared
+    @State private var readout = ArticleReadoutController.shared
     @AppStorage(VoiceCommandController.enabledKey) private var enabled = false
 
     var body: some View {
@@ -44,6 +45,11 @@ struct VoiceCommandBar: View {
         case .listening:
             if !voice.heard.isEmpty { return "\u{201C}\(voice.heard)\u{201D}" }
             if !voice.caption.isEmpty { return voice.caption }
+            if readout.isBriefing, let place = readout.playback.groupPosition {
+                let title = readout.briefing?.itemTitle ?? ""
+                return "\(readout.isPaused ? "Paused" : "Briefing") \(place.number) of \(place.count)"
+                    + (title.isEmpty ? "" : " · \(title)")
+            }
             return voice.isArmed ? "Listening…" : "Say \u{201C}SmartWard, …\u{201D}"
         }
     }
