@@ -86,6 +86,11 @@ struct ConversationView: View {
         .onDisappear {
             controller.resolve(approved: false)
             stopVoice()
+            AppAudio.shared.voiceChatActive = false
+        }
+        // The spoken-command listener waits while a voice chat has the microphone.
+        .onChange(of: voice.isActive) { _, active in
+            AppAudio.shared.voiceChatActive = active
         }
         .onChange(of: voice.pendingUtterance) { _, utterance in
             guard let utterance else { return }
