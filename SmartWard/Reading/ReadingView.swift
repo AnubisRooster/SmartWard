@@ -18,7 +18,6 @@ struct ReadingView: View {
     @State private var pipeline = PipelineController.shared
     @State private var ingest = IngestController.shared
     @State private var showingSources = false
-    @State private var query = ""
 
     private var filter: ReadingFilter { navigation.readingFilter }
 
@@ -77,20 +76,24 @@ struct ReadingView: View {
     var body: some View {
         NavigationStack(path: $navigation.readingPath) {
             Group {
-                if query.isEmpty {
+                if navigation.readingQuery.isEmpty {
                     readingList
                 } else {
-                    SearchResultsView(query: query)
+                    SearchResultsView(query: navigation.readingQuery)
                 }
             }
-            .searchable(text: $query, prompt: "Search your library")
+            .searchable(text: $navigation.readingQuery, prompt: "Search your library")
             .navigationTitle("Reading")
             .navigationDestination(for: Article.self) { article in
                 ArticleReaderView(article: article)
             }
             // What's listed, in order, for spoken commands like "open the second one".
             .onChange(of: visible.map(\.id), initial: true) {
-                navigation.listedArticles = visible
+                if navigation.readingQuery.isEmpty { navigation.listedArticles = visible }
+            }
+            // Back from search results to the list.
+            .onChange(of: navigation.readingQuery.isEmpty) { _, isEmpty in
+                if isEmpty { navigation.listedArticles = visible }
             }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {

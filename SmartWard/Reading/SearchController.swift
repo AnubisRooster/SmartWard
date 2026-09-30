@@ -147,6 +147,8 @@ struct SearchResultsView: View {
             articles = byID
             hits = results
             hasSearched = true
+            // So "open the second one" means the second result.
+            AppNavigation.shared.listedArticles = results.compactMap { byID[$0.articleID] }
         }
     }
 }

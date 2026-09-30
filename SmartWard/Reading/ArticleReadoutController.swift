@@ -42,6 +42,8 @@ final class ArticleReadoutController {
     }
 
     var isBriefing: Bool { briefing != nil }
+    /// What's being said is an answer (the strategist's), not an article or a briefing.
+    private(set) var isAnswer = false
     /// The article being briefed now, in a briefing of articles.
     var currentArticle: Article? {
         guard let briefing, case .articles(let articles) = briefing.kind,
@@ -104,6 +106,23 @@ final class ArticleReadoutController {
         stop()
         let segments = DigestReadout.segments(for: digest, clean: SpeechService.speakableText)
         return begin(briefing: Briefing(kind: .digest), segments: segments, title: "Today's digest")
+    }
+
+    /// Reads `text` (already cleaned for speech: the strategist's answer, say) aloud,
+    /// with pause, keep going and stop.
+    @discardableResult
+    func startAnswer(_ text: String, title: String = "SmartWard") -> Bool {
+        stop()
+        let segments = SpokenAnswer.segments(text)
+        guard !segments.isEmpty else { return false }
+        isAnswer = true
+        nowPlayingTitle = title
+        nowPlayingSource = "SmartWard"
+        playback.start(segments)
+        activateAudio()
+        installRemoteControls()
+        speakCurrent()
+        return true
     }
 
     private func begin(briefing: Briefing, segments: [ReadoutSegment], title: String) -> Bool {
@@ -190,6 +209,7 @@ final class ArticleReadoutController {
         guard articleID != nil || briefing != nil || playback.status != .idle else { return }
         playback.stop()
         articleID = nil
+        isAnswer = false
         endBriefing()
         currentUtterance = nil
         synthesizer.stopSpeaking(at: .immediate)
@@ -240,6 +260,7 @@ final class ArticleReadoutController {
     private func finish() {
         playback.stop()
         articleID = nil
+        isAnswer = false
         endBriefing()
         currentUtterance = nil
         tearDown()
@@ -315,7 +336,7 @@ final class ArticleReadoutController {
     }
 
     private func updateNowPlaying() {
-        guard articleID != nil || briefing != nil else { return }
+        guard articleID != nil || briefing != nil || isAnswer else { return }
         MPNowPlayingInfoCenter.default().nowPlayingInfo = [
             MPMediaItemPropertyTitle: nowPlayingTitle,
             MPMediaItemPropertyArtist: nowPlayingSource.isEmpty ? "SmartWard" : nowPlayingSource,

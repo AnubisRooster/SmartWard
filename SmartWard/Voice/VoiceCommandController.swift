@@ -63,9 +63,13 @@ final class VoiceCommandController {
     private struct Outcome {
         var text: String
         var spoken: String?
+        /// The answer to a question: said even over a reading (which pauses),
+        /// and whatever the spoken-confirmations setting says.
+        var isAnswer = false
 
         static func said(_ text: String) -> Outcome { Outcome(text: text, spoken: text) }
         static func silent(_ text: String) -> Outcome { Outcome(text: text, spoken: nil) }
+        static func answer(_ text: String) -> Outcome { Outcome(text: text, spoken: text, isAnswer: true) }
     }
 
     @ObservationIgnored private let recognizer = SpeechCommandRecognizer()
@@ -74,6 +78,8 @@ final class VoiceCommandController {
     @ObservationIgnored private var armedUntil = Date.distantPast
     @ObservationIgnored private var armedGeneration = 0
     @ObservationIgnored private var captionGeneration = 0
+    /// A question is with the strategist; one at a time.
+    @ObservationIgnored private var isAsking = false
     @ObservationIgnored private var interruptionObserver: NSObjectProtocol?
 
     /// How long after the wake word the next phrase needs no prefix.
@@ -246,6 +252,64 @@ final class VoiceCommandController {
     /// What Siri's "Brief me" does once the app is open in front of you.
     func beginRequestedBriefing() {
         present(startBriefing())
+    }
+
+    /// Runs the search the Reading tab is showing, and says what it found, so
+    /// "open the first one" has something to mean.
+    private func search(_ words: String, in library: ModelContext) {
+        Task { @MainActor [weak self] in
+            let hits = await SearchController.shared.search(words, context: library)
+            let navigation = AppNavigation.shared
+            // Something newer was searched for meanwhile.
+            guard let self, navigation.readingQuery == words else { return }
+            let ids = hits.map(\.articleID)
+            let found = (try? library.fetch(FetchDescriptor<Article>(predicate: #Predicate { ids.contains($0.id) }))) ?? []
+            var byID: [UUID: Article] = [:]
+            for article in found { byID[article.id] = article }
+            let ordered = hits.compactMap { byID[$0.articleID] }
+            navigation.listedArticles = ordered
+            self.present(.answer(VoiceAnswers.searchResults(query: words, titles: ordered.map(\.title),
+                                                             total: ordered.count)))
+        }
+    }
+
+    /// The strategist's answer, read aloud like an article: pause, keep going and stop work on it.
+    private func ask(_ question: String, in library: ModelContext) {
+        isAsking = true
+        Task { @MainActor [weak self] in
+            let answer = await VoiceAsk.ask(question, context: library)
+            guard let self else { return }
+            self.isAsking = false
+            switch answer {
+            case .spoken(let text):
+                self.present(.silent("Reading the answer"))
+                ArticleReadoutController.shared.startAnswer(text, title: question)
+            case .failed(let message):
+                self.present(.answer(message))
+            }
+        }
+    }
+
+    private func answer(for status: VoiceStatus) -> String {
+        guard let library else { return "I couldn't open your library." }
+        switch status {
+        case .unreadCount:
+            let unread = (try? library.fetch(FetchDescriptor<Article>(predicate: #Predicate { $0.isRead == false }))) ?? []
+            return VoiceAnswers.unread(LibraryVoiceQueries.unreadCount(in: unread))
+        case .refresh:
+            let ingest = IngestController.shared
+            return VoiceAnswers.refresh(isRefreshing: ingest.isRefreshing, lastSummary: ingest.lastSummary)
+        case .failingSources:
+            let sources = (try? library.fetch(FetchDescriptor<Source>())) ?? []
+            let names = sources.filter { $0.isEnabled && $0.sourceKind.isPolled && $0.lastError != nil }
+                .map { $0.title.isEmpty ? $0.url : $0.title }
+                .sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+            return VoiceAnswers.failingSources(names)
+        case .spendToday:
+            let budget = BudgetSettings.current
+            let spent = (try? budget.spentToday(context: library)) ?? 0
+            return VoiceAnswers.spend(spent: spent, cap: budget.capUSD)
+        }
     }
 
     /// One notch of speech speed, kept within a range that stays understandable.
@@ -447,6 +511,37 @@ final class VoiceCommandController {
             readout.restartSegment()
             return .said(command.confirmation)
 
+        case .search(let words):
+            guard let library else { return .said("I couldn't open your library.") }
+            navigation.show(.reading)
+            navigation.readingQuery = words
+            search(words, in: library)
+            return .silent(command.confirmation)
+
+        case .clearSearch:
+            navigation.readingQuery = ""
+            return .said(command.confirmation)
+
+        case .ask(let question):
+            guard let library else { return .said("I couldn't open your library.") }
+            guard !isAsking else { return .said("I'm still working on your last question.") }
+            ask(question, in: library)
+            return .said("Asking the strategist. One moment.")
+
+        case .status(let status):
+            return .answer(answer(for: status))
+
+        case .topThemes:
+            guard let library else { return .said("I couldn't open your library.") }
+            return .answer(VoiceAnswers.topThemes(LibraryVoiceQueries.topThemes(context: library)))
+
+        case .aboutTheme(let words):
+            guard let library else { return .said("I couldn't open your library.") }
+            guard let theme = LibraryVoiceQueries.describeTheme(matching: words, context: library) else {
+                return .answer("I couldn't find a theme called \(words).")
+            }
+            return .answer(VoiceAnswers.about(theme))
+
         case .help:
             let lines = VoiceCommandHelp.lines(for: context)
             return Outcome(text: lines.prefix(4).joined(separator: "\n"),
@@ -470,8 +565,15 @@ final class VoiceCommandController {
             self.caption = ""
         }
 
-        guard let spoken = outcome.spoken, Self.speaksAloud,
-              !ArticleReadoutController.shared.isActive else { return }
+        guard let spoken = outcome.spoken else { return }
+        let readout = ArticleReadoutController.shared
+        if outcome.isAnswer {
+            // "Keep going" carries on with what was being read.
+            if readout.isActive { readout.pause() }
+            VoiceSpeaker.shared.say(spoken)
+            return
+        }
+        guard Self.speaksAloud, !readout.isActive else { return }
         VoiceSpeaker.shared.say(spoken)
     }
 

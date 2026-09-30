@@ -21,6 +21,7 @@ public enum VoiceTab: String, CaseIterable, Equatable, Sendable {
 public enum VoiceReadingFilter: Equatable, Sendable { case unread, starred, all }
 public enum VoiceReadingOrder: Equatable, Sendable { case newest, mostRelevant }
 public enum VoiceSpeedChange: Equatable, Sendable { case faster, slower, normal }
+public enum VoiceStatus: Equatable, Sendable { case unreadCount, refresh, failingSources, spendToday }
 
 public enum VoiceCommand: Equatable, Sendable {
     case openTab(VoiceTab)
@@ -52,6 +53,15 @@ public enum VoiceCommand: Equatable, Sendable {
     case markUnread
     case loadFullArticle
     case setSpeed(VoiceSpeedChange)
+    /// Search the library for these words, and say what was found.
+    case search(String)
+    case clearSearch
+    /// A question for the strategist (your provider answers; it costs tokens).
+    case ask(String)
+    case status(VoiceStatus)
+    case topThemes
+    /// What the graph knows about a theme.
+    case aboutTheme(String)
     case help
     case stopListening
 
@@ -94,6 +104,12 @@ public enum VoiceCommand: Equatable, Sendable {
             case .slower: return "Slower"
             case .normal: return "Normal speed"
             }
+        case .search(let words): return "Searching for \(words)"
+        case .clearSearch: return "Search cleared"
+        case .ask: return "Asking the strategist"
+        case .status: return "Checking"
+        case .topThemes: return "Checking your themes"
+        case .aboutTheme(let words): return "Looking up \(words)"
         case .help: return "Here's what you can say"
         case .stopListening: return "Voice off"
         }
@@ -298,6 +314,54 @@ public enum VoiceCommandParser {
         "get the full text", "fetch the full article", "fetch the full text", "download the full article",
         "download the full text",
     ]
+    // Finding and asking.
+    static let searchPrefixes = [
+        "search my library for", "search the library for", "search my articles for", "search my reading for",
+        "search for", "search", "look up", "look for", "find me articles about", "find articles about",
+        "find me articles on", "find articles on", "find me an article about", "find an article about",
+        "find me", "find",
+    ].sorted { $0.count > $1.count }
+    static let clearSearch: Set<String> = [
+        "clear search", "clear the search", "clear my search", "close search", "close the search",
+        "stop searching", "end search", "cancel search",
+    ]
+    static let askPrefixes = [
+        "ask the strategist", "ask my strategist", "ask strategist", "ask the research strategist", "ask",
+    ].sorted { $0.count > $1.count }
+    static let statusPhrases: [(status: VoiceStatus, phrases: Set<String>)] = [
+        (.unreadCount, [
+            "how many unread", "how many unread articles", "how many unread articles do i have",
+            "how many unread items", "how many articles are unread", "how many articles do i have unread",
+            "unread count", "how many new articles", "how many new articles do i have", "how much is unread",
+            "how many are unread",
+        ]),
+        (.refresh, [
+            "did the refresh finish", "is the refresh done", "is the refresh finished", "refresh status",
+            "is it still refreshing", "is it done refreshing", "did it finish refreshing", "did it refresh",
+            "whats the refresh status", "has the refresh finished", "is refresh done",
+        ]),
+        (.failingSources, [
+            "which sources are failing", "which sources failed", "any failing sources", "are any sources failing",
+            "any source problems", "which feeds are failing", "which feeds failed", "whats failing",
+            "are my sources working", "are any sources broken", "which sources are broken",
+        ]),
+        (.spendToday, [
+            "how much have i spent", "how much have i spent today", "how much did i spend today",
+            "how much did i spend", "whats my spend", "whats my spend today", "how much money have i spent",
+            "budget status", "how much budget is left", "how much is left in my budget", "whats my budget",
+            "how much have i spent so far today",
+        ]),
+    ]
+    static let topThemes: Set<String> = [
+        "top themes", "my top themes", "the top themes", "what are my top themes", "what are the top themes",
+        "whats trending", "what themes are trending", "whats hot", "what are my strongest themes",
+        "strongest themes", "trending themes",
+    ]
+    static let aboutPrefixes = [
+        "tell me about", "what do i know about", "what have i read about", "what does my graph say about",
+        "what does the graph say about", "explain",
+    ].sorted { $0.count > $1.count }
+
     static let faster: Set<String> = ["faster", "speak faster", "read faster", "speed up", "go faster", "speed it up", "talk faster"]
     static let slower: Set<String> = ["slower", "speak slower", "read slower", "slow down", "go slower", "slow it down", "talk slower"]
     static let normalSpeed: Set<String> = [
@@ -469,6 +533,12 @@ public enum VoiceCommandParser {
         if faster.contains(body) { return .setSpeed(.faster) }
         if slower.contains(body) { return .setSpeed(.slower) }
         if normalSpeed.contains(body) { return .setSpeed(.normal) }
+        if clearSearch.contains(body) { return .clearSearch }
+        if topThemes.contains(body) { return .topThemes }
+        if let status = statusPhrases.first(where: { $0.phrases.contains(body) })?.status { return .status(status) }
+        if let words = remainder(of: body, after: askPrefixes) { return .ask(words) }
+        if let words = remainder(of: body, after: searchPrefixes) { return .search(words) }
+        if let words = remainder(of: body, after: aboutPrefixes) { return .aboutTheme(words) }
 
         if star.contains(body) { return .star(true) }
         if unstar.contains(body) { return .star(false) }
@@ -492,6 +562,28 @@ public enum VoiceCommandParser {
         guard !query.isEmpty else { return nil }
         if let index = VoiceItemMatcher.best(query, in: context.items) { return .openItem(index + 1) }
         return .openMatching(query)
+    }
+
+    /// What follows one of `prefixes` at the start of `text`, once filler is dropped; `nil` when
+    /// the text doesn't start with one or nothing follows.
+    private static func remainder(of text: String, after prefixes: [String]) -> String? {
+        for prefix in prefixes where text.hasPrefix(prefix + " ") {
+            let fillers: Set<String> = ["for", "about", "on", "the", "a", "an", "me", "to"]
+            var words = VoiceText.words(String(text.dropFirst(prefix.count + 1)))
+            while let first = words.first, fillers.contains(first), words.count > 1 { words.removeFirst() }
+            let rest = words.joined(separator: " ")
+            // "ask the strategist" alone has no question in it.
+            return fillers.contains(rest) || rest == "strategist" || rest.isEmpty ? nil : rest
+        }
+        return nil
+    }
+
+    /// Someone is partway through a question for the strategist ("smartward ask …"),
+    /// which runs longer than a command and takes longer pauses.
+    public static func isAsking(_ heard: String) -> Bool {
+        let text = VoiceText.normalize(heard)
+        let rest = stripWake(text) ?? text
+        return askPrefixes.contains { rest.hasPrefix($0 + " ") }
     }
 
     private static func tabNamed(_ text: String) -> VoiceTab? {
@@ -574,6 +666,9 @@ public enum VoiceCommandHelp {
         lines.append("SmartWard, open Reading (or Today, Graph, Chat, Projects)")
         lines.append("SmartWard, brief me")
         lines.append("SmartWard, read today's digest")
+        lines.append("SmartWard, search for speculative decoding")
+        lines.append("SmartWard, ask the strategist what changed this week")
+        lines.append("SmartWard, how many unread articles do I have?")
         lines.append("SmartWard, go back")
         lines.append("SmartWard, what can I say?")
         lines.append("SmartWard, stop listening")
