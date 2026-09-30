@@ -7,26 +7,20 @@ import Pipeline
 /// Everything fetched from followed sources, newest first. Linked-repo docs
 /// are project context, not reading, so they aren't listed here.
 struct ReadingView: View {
-    enum Filter: String, CaseIterable, Identifiable {
-        case unread = "Unread", starred = "Starred", all = "All"
-        var id: Self { self }
-    }
-
-    enum Order: String, CaseIterable, Identifiable {
-        case newest = "Newest", relevant = "Most relevant"
-        var id: Self { self }
-    }
-
     @Environment(\.modelContext) private var context
     @Query(sort: \Article.ingestedAt, order: .reverse) private var articles: [Article]
     @Query private var sources: [Source]
-    @State private var filter: Filter = .unread
-    @AppStorage("reading.order") private var order: Order = .newest
+    /// The stack's screens and the filter live in `AppNavigation`, so they can be
+    /// driven from outside this screen.
+    @State private var navigation = AppNavigation.shared
+    @AppStorage(ReadingOrder.storageKey) private var order: ReadingOrder = .newest
     @State private var showingFiltered = false
     @State private var pipeline = PipelineController.shared
     @State private var ingest = IngestController.shared
     @State private var showingSources = false
     @State private var query = ""
+
+    private var filter: ReadingFilter { navigation.readingFilter }
 
     private var reading: [Article] {
         articles.filter { $0.source?.sourceKind != .githubRepo }
@@ -81,7 +75,7 @@ struct ReadingView: View {
     }
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $navigation.readingPath) {
             Group {
                 if query.isEmpty {
                     readingList
@@ -100,7 +94,7 @@ struct ReadingView: View {
                 }
                 ToolbarItem(placement: .secondaryAction) {
                     Picker("Order", selection: $order) {
-                        ForEach(Order.allCases) { Text($0.rawValue).tag($0) }
+                        ForEach(ReadingOrder.allCases) { Text($0.rawValue).tag($0) }
                     }
                 }
                 ToolbarItem(placement: .primaryAction) {
@@ -179,8 +173,8 @@ struct ReadingView: View {
         .listStyle(.plain)
         .safeAreaInset(edge: .top) {
             VStack(spacing: 0) {
-                Picker("Show", selection: $filter) {
-                    ForEach(Filter.allCases) { Text($0.rawValue).tag($0) }
+                Picker("Show", selection: $navigation.readingFilter) {
+                    ForEach(ReadingFilter.allCases) { Text($0.rawValue).tag($0) }
                 }
                 .pickerStyle(.segmented)
                 .padding(.horizontal)
