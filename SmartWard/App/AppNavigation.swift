@@ -46,6 +46,8 @@ final class AppNavigation {
 
     /// The article open in the reader right now, if any (set by the reader).
     var readerArticle: Article?
+    /// The project whose card is open (set by the card), so "read the brief" knows which.
+    var projectOpen: Project?
     /// The articles listed in the Reading tab, in the order shown (set by
     /// the list), so "open the second one" knows what "second" is.
     var listedArticles: [Article] = []

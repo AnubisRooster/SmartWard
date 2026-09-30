@@ -67,6 +67,60 @@ public enum VoiceAnswers {
         return "I found \(total) \(total == 1 ? "result" : "results") for \(query). " + top.joined(separator: " ")
     }
 
+    // MARK: Projects
+
+    public static let noProjectOpen = "Open a project first. Say SmartWard, open project, and its name."
+
+    public static func itemKindName(_ kind: StrategyItemKind) -> String {
+        switch kind {
+        case .decision: return "decision"
+        case .openQuestion: return "open question"
+        case .actionItem: return "action item"
+        case .assumption: return "assumption"
+        case .risk: return "risk"
+        }
+    }
+
+    /// The open items, numbered the way "mark item 2 done" counts them.
+    public static func openItems(_ items: [(kind: StrategyItemKind, text: String)], limit: Int = 8) -> String {
+        guard !items.isEmpty else { return "There are no open items." }
+        var parts = [items.count == 1 ? "There is 1 open item." : "There are \(items.count) open items."]
+        for (index, item) in items.prefix(limit).enumerated() {
+            parts.append("Number \(index + 1), \(itemKindName(item.kind)): \(ArticleBriefing.sentence(item.text))")
+        }
+        if items.count > limit { parts.append("And \(items.count - limit) more.") }
+        return parts.joined(separator: " ")
+    }
+
+    /// - Parameters:
+    ///   - rationale: why the suggestion was made, if it says.
+    ///   - added, removed: lines added to and removed from the brief.
+    public static func briefUpdate(rationale: String?, added: Int, removed: Int) -> String {
+        var parts = ["There's a suggested update to the brief."]
+        let reason = rationale?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !reason.isEmpty { parts.append("The reason: " + ArticleBriefing.cut(reason, to: 400)) }
+        func lines(_ n: Int) -> String { "\(n) \(n == 1 ? "line" : "lines")" }
+        switch (added, removed) {
+        case (0, 0): break
+        case (_, 0): parts.append("It adds \(lines(added)).")
+        case (0, _): parts.append("It removes \(lines(removed)).")
+        default: parts.append("It adds \(lines(added)) and removes \(lines(removed)).")
+        }
+        parts.append("Say SmartWard, accept the suggested update, or reject it.")
+        return parts.joined(separator: " ")
+    }
+
+    public static let noBriefUpdate = "There's no suggested update waiting."
+    public static let noBrief = "This project has no brief yet."
+    public static let nothingRelated = "Nothing in your reading matches this project yet."
+
+    public static func confirmMarkDone(number: Int, kind: StrategyItemKind, text: String) -> String {
+        "Mark number \(number) as done? The \(itemKindName(kind)): \(ArticleBriefing.cut(text, to: 120)) Say yes or no."
+    }
+
+    public static let confirmAccept = "Accept the suggested update to the brief? Say yes or no."
+    public static let confirmReject = "Reject the suggested update to the brief? Say yes or no."
+
     public static func about(_ theme: ThemeDescription) -> String {
         var parts = ["\(theme.label) is a \(theme.type.isEmpty ? "theme" : theme.type)."]
         if theme.articleCount > 0 {

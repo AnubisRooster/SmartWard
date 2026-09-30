@@ -62,8 +62,23 @@ public enum VoiceCommand: Equatable, Sendable {
     case topThemes
     /// What the graph knows about a theme.
     case aboutTheme(String)
+    /// About the project open on screen.
+    case readBrief, readOpenItems, readProjectReading, readBriefUpdate
+    /// The 1-based number the open items were read out with.
+    case markItemDone(Int)
+    case acceptBriefUpdate, rejectBriefUpdate
+    /// The answer to "…? Say yes or no."
+    case confirm, decline
     case help
     case stopListening
+
+    /// Changes your projects, so it's said back as a question and waits for a yes.
+    public var needsConfirmation: Bool {
+        switch self {
+        case .markItemDone, .acceptBriefUpdate, .rejectBriefUpdate: return true
+        default: return false
+        }
+    }
 
     /// A short line for the caption, and to say back.
     public var confirmation: String {
@@ -110,6 +125,15 @@ public enum VoiceCommand: Equatable, Sendable {
         case .status: return "Checking"
         case .topThemes: return "Checking your themes"
         case .aboutTheme(let words): return "Looking up \(words)"
+        case .readBrief: return "Reading the brief"
+        case .readOpenItems: return "Checking the open items"
+        case .readProjectReading: return "Briefing you on this project"
+        case .readBriefUpdate: return "Checking for a suggested update"
+        case .markItemDone(let number): return "Marking number \(number) done"
+        case .acceptBriefUpdate: return "Accepted"
+        case .rejectBriefUpdate: return "Rejected"
+        case .confirm: return "Confirmed"
+        case .decline: return "Cancelled"
         case .help: return "Here's what you can say"
         case .stopListening: return "Voice off"
         }
@@ -126,6 +150,10 @@ public struct VoiceContext: Equatable, Sendable {
     /// The reading is a briefing (several articles, or the digest), so "next"
     /// means the next article and "repeat" the same one again.
     public var isBriefing: Bool
+    /// A project's card is open (so "read the brief" has a project to mean).
+    public var isProjectOpen: Bool
+    /// The app just asked "…? Say yes or no." and is waiting.
+    public var isConfirming: Bool
     /// The wake word was just heard, so the next phrase needs no prefix.
     public var isArmed: Bool
     /// The section being read right now.
@@ -135,11 +163,14 @@ public struct VoiceContext: Equatable, Sendable {
     public var projects: [String]
 
     public init(tab: VoiceTab = .today, isReaderOpen: Bool = false, isReading: Bool = false,
-                isBriefing: Bool = false, isArmed: Bool = false, spokenNow: String = "", items: [String] = [], projects: [String] = []) {
+                isBriefing: Bool = false, isProjectOpen: Bool = false, isConfirming: Bool = false,
+                isArmed: Bool = false, spokenNow: String = "", items: [String] = [], projects: [String] = []) {
         self.tab = tab
         self.isReaderOpen = isReaderOpen
         self.isReading = isReading
         self.isBriefing = isBriefing
+        self.isProjectOpen = isProjectOpen
+        self.isConfirming = isConfirming
         self.isArmed = isArmed
         self.spokenNow = spokenNow
         self.items = items
@@ -362,6 +393,44 @@ public enum VoiceCommandParser {
         "what does the graph say about", "explain",
     ].sorted { $0.count > $1.count }
 
+    // Projects and decisions.
+    static let readBrief: Set<String> = [
+        "read the brief", "read this brief", "read the project brief", "read the projects brief",
+        "read this projects brief", "read me the brief", "read the brief aloud", "whats in the brief",
+        "read the brief to me",
+    ]
+    static let readOpenItems: Set<String> = [
+        "read the open items", "read my open items", "what are the open items", "what are my open items",
+        "whats open", "read the action items", "what are my action items", "read the open items for this project",
+        "what is open",
+    ]
+    static let readProjectReading: Set<String> = [
+        "read the related articles", "read related articles", "read the related reading", "read related reading",
+        "brief me on this project", "what should i read for this project", "read the articles for this project",
+    ]
+    static let readBriefUpdate: Set<String> = [
+        "read the suggested update", "read the suggestion", "what changed in the brief", "whats the suggested update",
+        "read the brief update", "read the proposed update", "is there a suggested update",
+    ]
+    static let acceptBriefUpdate: Set<String> = [
+        "accept the suggested update", "accept the update", "accept the brief update", "accept the suggestion",
+        "accept the proposed update", "apply the suggested update",
+    ]
+    static let rejectBriefUpdate: Set<String> = [
+        "reject the suggested update", "reject the update", "reject the brief update", "reject the suggestion",
+        "reject the proposed update", "decline the suggested update", "dismiss the suggested update",
+    ]
+    /// Only heard as answers while the app is waiting for one.
+    static let yesWords: Set<String> = [
+        "yes", "yes please", "yeah", "yep", "yup", "confirm", "do it", "go ahead", "sure", "thats right", "correct",
+        "yes do it",
+    ]
+    static let noWords: Set<String> = [
+        "no", "no thanks", "nope", "cancel", "never mind", "nevermind", "dont", "dont do it", "stop", "wait",
+        "negative", "no dont",
+    ]
+    static let markDoneVerbs: Set<String> = ["mark", "complete", "finish"]
+
     static let faster: Set<String> = ["faster", "speak faster", "read faster", "speed up", "go faster", "speed it up", "talk faster"]
     static let slower: Set<String> = ["slower", "speak slower", "read slower", "slow down", "go slower", "slow it down", "talk slower"]
     static let normalSpeed: Set<String> = [
@@ -471,6 +540,11 @@ public enum VoiceCommandParser {
     /// Control words with no wake word, only while something's being read,
     /// and never when the voice is saying that very word (it's the echo).
     private static func bare(_ text: String, _ context: VoiceContext) -> VoiceParse {
+        // Right after "…? Say yes or no." the answer needs no wake word.
+        if context.isConfirming {
+            if yesWords.contains(text) { return .command(.confirm) }
+            if noWords.contains(text) { return .command(.decline) }
+        }
         guard context.isReading, bareControls.contains(text),
               !VoiceText.containsPhrase(VoiceText.normalize(context.spokenNow), text),
               let found = command(for: text, context) else { return .ignored }
@@ -506,6 +580,10 @@ public enum VoiceCommandParser {
     // MARK: Phrases → commands
 
     private static func command(for body: String, _ context: VoiceContext) -> VoiceCommand? {
+        if context.isConfirming {
+            if yesWords.contains(body) { return .confirm }
+            if noWords.contains(body) { return .decline }
+        }
         if help.contains(body) || body.hasPrefix("what can i say") { return .help }
         if stopListening.contains(body) { return .stopListening }
 
@@ -533,6 +611,13 @@ public enum VoiceCommandParser {
         if faster.contains(body) { return .setSpeed(.faster) }
         if slower.contains(body) { return .setSpeed(.slower) }
         if normalSpeed.contains(body) { return .setSpeed(.normal) }
+        if readBrief.contains(body) { return .readBrief }
+        if readOpenItems.contains(body) { return .readOpenItems }
+        if readProjectReading.contains(body) { return .readProjectReading }
+        if readBriefUpdate.contains(body) { return .readBriefUpdate }
+        if acceptBriefUpdate.contains(body) { return .acceptBriefUpdate }
+        if rejectBriefUpdate.contains(body) { return .rejectBriefUpdate }
+        if let number = doneItemNumber(body) { return .markItemDone(number) }
         if clearSearch.contains(body) { return .clearSearch }
         if topThemes.contains(body) { return .topThemes }
         if let status = statusPhrases.first(where: { $0.phrases.contains(body) })?.status { return .status(status) }
@@ -562,6 +647,20 @@ public enum VoiceCommandParser {
         guard !query.isEmpty else { return nil }
         if let index = VoiceItemMatcher.best(query, in: context.items) { return .openItem(index + 1) }
         return .openMatching(query)
+    }
+
+    /// "mark item 2 done", "mark the second one as done", "complete item three", "finish number 4".
+    private static func doneItemNumber(_ body: String) -> Int? {
+        var words = VoiceText.words(body)
+        guard let verb = words.first, markDoneVerbs.contains(verb) else { return nil }
+        words.removeFirst()
+        for suffix in [["as", "done"], ["as", "complete"], ["as", "finished"], ["done"], ["complete"], ["finished"]]
+        where words.count > suffix.count && Array(words.suffix(suffix.count)) == suffix {
+            words.removeLast(suffix.count)
+            break
+        }
+        guard case .openItem(let number)? = itemPosition(words.joined(separator: " ")) else { return nil }
+        return number
     }
 
     /// What follows one of `prefixes` at the start of `text`, once filler is dropped; `nil` when
@@ -643,6 +742,14 @@ public enum VoiceCommandHelp {
     /// Example phrases for what's on screen now, most relevant first.
     public static func lines(for context: VoiceContext) -> [String] {
         var lines: [String] = []
+        if context.isConfirming { lines.append("Say yes to go ahead, or no to cancel (no need to say SmartWard)") }
+        if context.isProjectOpen {
+            lines.append("SmartWard, read the brief")
+            lines.append("SmartWard, what are my open items?")
+            lines.append("SmartWard, mark item two done")
+            lines.append("SmartWard, read the suggested update")
+            lines.append("SmartWard, brief me on this project")
+        }
         if context.isBriefing {
             lines.append("Next, previous, repeat, tell me more, star it, dismiss, faster, slower (no need to say SmartWard)")
         }

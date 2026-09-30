@@ -54,7 +54,8 @@ final class SpeechCommandRecognizer {
         "SmartWard read the summary", "SmartWard what can I say", "SmartWard stop listening",
         "SmartWard brief me", "SmartWard read today's digest", "keep going", "stop reading", "next article",
         "tell me more", "dismiss", "SmartWard ask the strategist", "SmartWard search for",
-        "SmartWard how many unread articles do I have",
+        "SmartWard how many unread articles do I have", "SmartWard read the brief", "SmartWard mark item two done",
+        "SmartWard accept the suggested update", "yes please",
     ]
 
     private(set) var isRunning = false
