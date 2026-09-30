@@ -46,6 +46,8 @@ final class VoiceCommandController {
 
     static let enabledKey = "voice.navigation.enabled"
     static let speakKey = "voice.navigation.speak"
+    /// Whether free wording is worked out by the on-device model when the grammar doesn't know it.
+    static let naturalKey = "voice.navigation.natural"
 
     enum Phase: Equatable {
         case off, starting, listening
@@ -193,9 +195,42 @@ final class VoiceCommandController {
             }
         case .unrecognized(let words):
             disarm()
-            UINotificationFeedbackGenerator().notificationOccurred(.warning)
-            present(.said("I can't do \u{201C}\(words)\u{201D}. Say SmartWard, what can I say?"))
+            if Self.understandsNaturalPhrasing {
+                interpretFreely(words, context: context)
+            } else {
+                reject(words)
+            }
         }
+    }
+
+    private func reject(_ words: String) {
+        UINotificationFeedbackGenerator().notificationOccurred(.warning)
+        present(.said("I can't do \u{201C}\(words)\u{201D}. Say SmartWard, what can I say?"))
+    }
+
+    /// Free wording the grammar didn't know: the on-device model picks the
+    /// phrase it means, and that phrase runs through the same parser and the
+    /// same confirmations as if you'd said it.
+    private func interpretFreely(_ words: String, context: VoiceContext) {
+        present(.silent("Working out what you meant…"))
+        Task { @MainActor [weak self] in
+            let reply = await FoundationModelsVoiceRephraser().rephrase(words, context: context)
+            guard let self else { return }
+            let now = self.makeContext()
+            guard let reply, let command = VoiceRephrase.command(fromReply: reply, context: now) else {
+                self.reject(words)
+                return
+            }
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            self.gate.cancel()
+            self.run(command, context: now)
+        }
+    }
+
+    private static var understandsNaturalPhrasing: Bool {
+        let defaults = UserDefaults.standard
+        let wanted = defaults.object(forKey: naturalKey) == nil ? true : defaults.bool(forKey: naturalKey)
+        return wanted && FoundationModelsVoiceRephraser.isAvailable
     }
 
     private func arm() {
