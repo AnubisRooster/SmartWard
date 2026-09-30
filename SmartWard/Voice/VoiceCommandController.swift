@@ -76,7 +76,9 @@ final class VoiceCommandController {
         static func answer(_ text: String) -> Outcome { Outcome(text: text, spoken: text, isAnswer: true) }
     }
 
-    @ObservationIgnored private let recognizer = SpeechCommandRecognizer()
+    @ObservationIgnored private var recognizer: any CommandRecognizing = SpeechCommandRecognizer()
+    /// The engine `recognizer` is (a change in Settings swaps it at the next start).
+    @ObservationIgnored private var engine = VoiceEngine.standard
     @ObservationIgnored private var wanted = false
     @ObservationIgnored private var startTask: Task<Void, Never>?
     @ObservationIgnored private var armedUntil = Date.distantPast
@@ -92,12 +94,7 @@ final class VoiceCommandController {
     private static let armedWindow: TimeInterval = 6
 
     private init() {
-        recognizer.onPartial = { [weak self] text in self?.heard = text }
-        recognizer.onPhrase = { [weak self] phrase in self?.handle(phrase) }
-        recognizer.onFailure = { [weak self] failure in
-            self?.phase = .unavailable(failure.localizedDescription)
-            self?.heard = ""
-        }
+        wire(recognizer)
         interruptionObserver = NotificationCenter.default.addObserver(
             forName: AVAudioSession.interruptionNotification, object: nil, queue: .main
         ) { [weak self] note in
@@ -108,6 +105,31 @@ final class VoiceCommandController {
     }
 
     // MARK: Listening
+
+    private func wire(_ recognizer: any CommandRecognizing) {
+        recognizer.onPartial = { [weak self] text in self?.heard = text }
+        recognizer.onPhrase = { [weak self] phrase in self?.handle(phrase) }
+        recognizer.onFailure = { [weak self] failure in
+            self?.phase = .unavailable(failure.localizedDescription)
+            self?.heard = ""
+        }
+    }
+
+    /// Listens with `engine`, replacing the recognizer if it's a different one.
+    private func useRecognizer(for engine: VoiceEngine) {
+        guard engine != self.engine else { return }
+        recognizer.stop()
+        recognizer = engine == .newer ? AnalyzerCommandRecognizer() : SpeechCommandRecognizer()
+        self.engine = engine
+        wire(recognizer)
+    }
+
+    /// The speech engine was changed in Settings: listen with the new one.
+    func engineChanged() {
+        guard wanted else { return }
+        stopEverything()
+        startIfNeeded()
+    }
 
     /// Says whether it should be listening now: switched on, and the app in
     /// front, unlocked and not sharing the microphone with a voice chat.
@@ -125,8 +147,18 @@ final class VoiceCommandController {
         phase = .starting
         startTask = Task { @MainActor [weak self] in
             guard let self else { return }
+            let preferred = VoiceEngine.current
             do {
-                try await recognizer.start()
+                useRecognizer(for: preferred)
+                do {
+                    try await recognizer.start()
+                } catch where preferred == .newer {
+                    // The newer engine can't run here: the standard one, and say so.
+                    recognizer.stop()
+                    useRecognizer(for: .standard)
+                    try await recognizer.start()
+                    present(.silent("The newer speech engine isn't available here, so I'm using the standard one."))
+                }
                 if wanted {
                     phase = .listening
                 } else {

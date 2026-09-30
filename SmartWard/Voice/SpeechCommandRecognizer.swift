@@ -20,6 +20,8 @@ import Pipeline
 final class SpeechCommandRecognizer {
     enum Failure: Error, LocalizedError {
         case permissionDenied, unavailable, onDeviceUnsupported, micNotReady, notResponding
+        /// The newer speech engine can't run here (no English model, or no support).
+        case engineUnavailable
 
         var errorDescription: String? {
             switch self {
@@ -29,6 +31,7 @@ final class SpeechCommandRecognizer {
                 return "Voice navigation needs on-device speech recognition, which isn't available for English on this device."
             case .micNotReady: return "The microphone couldn't start. Make sure no other app is using it."
             case .notResponding: return "Speech recognition stopped responding."
+            case .engineUnavailable: return "The newer speech engine isn't available for English on this device."
             }
         }
     }
