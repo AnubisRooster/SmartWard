@@ -6,19 +6,19 @@ _Auto-generated from the GitNexus knowledge graph on every push to `main`. Do no
 
 | nodes | edges |
 | ----- | ----- |
-| 6726 | 34347 |
+| 6926 | 35730 |
 
 ## God nodes (highest out-degree, tests excluded)
 
 | symbol | file | outDegree |
 | --- | --- | --- |
-| DigestBuilder.swift | Packages/SmartWardKit/Sources/Pipeline/DigestBuilder.swift | 206 |
-| GraphEditing.swift | Packages/SmartWardKit/Sources/Pipeline/GraphEditing.swift | 205 |
-| HybridSearch.swift | Packages/SmartWardKit/Sources/Pipeline/HybridSearch.swift | 205 |
-| LibraryArchive.swift | Packages/SmartWardKit/Sources/KnowledgeStore/LibraryArchive.swift | 183 |
-| GraphRetrieval.swift | Packages/SmartWardKit/Sources/Pipeline/GraphRetrieval.swift | 183 |
-| Onboarding.swift | Packages/SmartWardKit/Sources/StrategistCore/Onboarding.swift | 183 |
-| BriefService.swift | Packages/SmartWardKit/Sources/StrategistCore/BriefService.swift | 182 |
-| SampleLibrary.swift | Packages/SmartWardKit/Sources/Pipeline/SampleLibrary.swift | 182 |
-| PipelineRunner.swift | Packages/SmartWardKit/Sources/Pipeline/PipelineRunner.swift | 182 |
-| Extraction.swift | Packages/SmartWardKit/Sources/Pipeline/Extraction.swift | 180 |
+| DigestBuilder.swift | Packages/SmartWardKit/Sources/Pipeline/DigestBuilder.swift | 209 |
+| GraphEditing.swift | Packages/SmartWardKit/Sources/Pipeline/GraphEditing.swift | 208 |
+| HybridSearch.swift | Packages/SmartWardKit/Sources/Pipeline/HybridSearch.swift | 208 |
+| Onboarding.swift | Packages/SmartWardKit/Sources/StrategistCore/Onboarding.swift | 186 |
+| LibraryArchive.swift | Packages/SmartWardKit/Sources/KnowledgeStore/LibraryArchive.swift | 186 |
+| GraphRetrieval.swift | Packages/SmartWardKit/Sources/Pipeline/GraphRetrieval.swift | 186 |
+| BriefService.swift | Packages/SmartWardKit/Sources/StrategistCore/BriefService.swift | 185 |
+| PipelineRunner.swift | Packages/SmartWardKit/Sources/Pipeline/PipelineRunner.swift | 185 |
+| SampleLibrary.swift | Packages/SmartWardKit/Sources/Pipeline/SampleLibrary.swift | 185 |
+| Extraction.swift | Packages/SmartWardKit/Sources/Pipeline/Extraction.swift | 183 |
