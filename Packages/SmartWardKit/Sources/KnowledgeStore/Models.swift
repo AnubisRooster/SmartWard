@@ -285,6 +285,10 @@ public final class Article {
     /// Pipeline). A cache: it's regenerated when the text changes and isn't
     /// part of a library backup.
     public var summaryJSON: String?
+    /// Runs in which every allowed extractor failed on this article. After
+    /// `GraphIndexer.maxGraphAttempts` it's left out of the knowledge graph
+    /// (still readable and searchable) instead of being retried forever.
+    public var graphAttempts: Int = 0
 
     @Relationship(deleteRule: .cascade, inverse: \Chunk.article)
     public var chunks: [Chunk]? = []

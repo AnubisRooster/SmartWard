@@ -103,13 +103,42 @@ public enum GraphLinker {
     }
 }
 
+/// One article's text, handed to extraction off the main actor.
+private struct ExtractionJob: Sendable {
+    let id: UUID
+    /// In order of preference; the next is tried when one fails.
+    let extractors: [any EntityExtracting]
+    let texts: [String]
+}
+
+/// What extraction of one `ExtractionJob` produced.
+private struct ExtractionResult: Sendable {
+    let id: UUID
+    /// The tier that answered, or `nil` when every extractor failed.
+    var tier: ExtractionTier?
+    /// Which chunks (by position) each output covers.
+    var groups: [[Int]] = []
+    var outputs: [ExtractionOutput] = []
+    var cancelled = false
+}
+
+public enum GraphIndexError: Error, Equatable {
+    /// Every allowed extractor failed on it this run.
+    case extractionFailed
+}
+
 /// Decides which extractor may see which content (D2, D5), then extracts
 /// and links. Articles move `embedded` → `linked`; conversation turns get
 /// chunked, embedded and linked, and are stamped `indexedAt`.
 @MainActor
 public final class GraphIndexer {
     /// Most on-device calls per article; long articles are represented by their start.
-    static let maxOnDeviceBatches = 4
+    nonisolated static let maxOnDeviceBatches = 2
+    /// After this many runs in which every allowed extractor failed, an article
+    /// is left out of the graph: still readable and searchable, just not linked.
+    nonisolated public static let maxGraphAttempts = 2
+    /// Provider extractions run this many at a time (on-device ones one at a time).
+    nonisolated public static let concurrentExtractions = 3
 
     private let context: ModelContext
     private let embedder: EmbeddingModel
@@ -141,9 +170,14 @@ public final class GraphIndexer {
     /// - Local-only content (private repos) never leaves the device (D5).
     /// - Public linked-repo docs go to your provider unless you turned
     ///   extraction off for that repo (D2), falling back to on-device.
-    /// - Everything else is extracted on-device, with your provider as the
-    ///   fallback when Apple Intelligence is off (PLAN §5.4).
-    public static func tiers(for article: Article, links: [UUID: ProjectLink]) -> [ExtractionTier] {
+    /// - Everything else goes to your provider first (one call per article,
+    ///   faster and better than the on-device model), with Apple Intelligence
+    ///   as the fallback when the provider fails or today's budget is spent.
+    /// - Parameter providerFirst: graph extraction asks your provider first;
+    ///   article summaries (written for every new article) pass `false` and
+    ///   stay on-device first.
+    public static func tiers(for article: Article, links: [UUID: ProjectLink],
+                             providerFirst: Bool = true) -> [ExtractionTier] {
         let chunks = article.chunks ?? []
         if article.localOnly || chunks.contains(where: { !ContextPolicy.mayLeaveDevice($0) }) {
             return [.onDevice]
@@ -152,7 +186,7 @@ public final class GraphIndexer {
             guard let link = links[source.id], link.sendsContentToBYOK else { return [.onDevice] }
             return [.byok, .onDevice]
         }
-        return [.onDevice, .byok]
+        return providerFirst ? [.byok, .onDevice] : [.onDevice, .byok]
     }
 
     /// Conversations go to your provider (D2) unless marked off the record.
@@ -163,15 +197,126 @@ public final class GraphIndexer {
 
     // MARK: Articles
 
+    public enum Outcome: Equatable, Sendable {
+        case linked(GraphLinker.Result)
+        /// No allowed extractor right now (none set up, or only your provider
+        /// and today's budget is spent): it waits for a later run.
+        case unavailable
+        /// Every allowed extractor failed; counted in `graphAttempts`.
+        case failed
+        case cancelled
+    }
+
+    /// The extractors that may see `article` right now, in order of preference.
+    private func extractors(for article: Article, links: [UUID: ProjectLink]) -> [any EntityExtracting] {
+        withinBudget(Self.tiers(for: article, links: links)).compactMap { tiers.extractor(for: $0) }
+    }
+
+    /// Whether `article` would go to your provider first (and so can be
+    /// extracted alongside others).
+    public func prefersProvider(_ article: Article, links: [UUID: ProjectLink]) -> Bool {
+        extractors(for: article, links: links).first?.tier == .byok
+    }
+
     /// - Returns: the link result, or `nil` when no allowed extractor is
     ///   available (the article stays `embedded` for a later run).
+    /// - Throws: `GraphIndexError.extractionFailed` when every allowed extractor failed.
     public func index(_ article: Article, links: [UUID: ProjectLink]) async throws -> GraphLinker.Result? {
-        guard let extractor = tiers.first(in: withinBudget(Self.tiers(for: article, links: links))) else { return nil }
-        let chunks = (article.chunks ?? []).sorted { $0.ordinal < $1.ordinal }
-        try GraphLinker.unlink(chunks, context: context)
-        let result = try await extractAndLink(chunks, with: extractor, feature: "extraction")
-        article.stage = .linked
-        return result
+        switch await index([article], links: links)[article.id] {
+        case .linked(let result)?: return result
+        case .cancelled?: throw CancellationError()
+        case .failed?: throw GraphIndexError.extractionFailed
+        case .unavailable?, nil: return nil
+        }
+    }
+
+    /// Extracts `articles` at the same time (each trying its extractors in
+    /// order), then links them one by one. An article whose every extractor
+    /// failed has `graphAttempts` raised and stays `embedded`.
+    public func index(_ articles: [Article], links: [UUID: ProjectLink]) async -> [UUID: Outcome] {
+        var outcomes: [UUID: Outcome] = [:]
+        var chunksByID: [UUID: [KnowledgeStore.Chunk]] = [:]
+        var jobs: [ExtractionJob] = []
+        for article in articles {
+            let extractors = extractors(for: article, links: links)
+            guard !extractors.isEmpty else {
+                outcomes[article.id] = .unavailable
+                continue
+            }
+            let chunks = (article.chunks ?? []).sorted { $0.ordinal < $1.ordinal }
+            chunksByID[article.id] = chunks
+            jobs.append(ExtractionJob(id: article.id, extractors: extractors, texts: chunks.map(\.text)))
+        }
+
+        let results = await withTaskGroup(of: ExtractionResult.self) { group in
+            for job in jobs { group.addTask { await Self.extract(job) } }
+            var all: [UUID: ExtractionResult] = [:]
+            for await result in group { all[result.id] = result }
+            return all
+        }
+
+        for article in articles {
+            guard let result = results[article.id], let chunks = chunksByID[article.id] else { continue }
+            if result.cancelled {
+                outcomes[article.id] = .cancelled
+                continue
+            }
+            guard result.tier != nil else {
+                article.graphAttempts += 1
+                outcomes[article.id] = .failed
+                continue
+            }
+            do {
+                try GraphLinker.unlink(chunks, context: context)
+            } catch {
+                outcomes[article.id] = .failed
+                continue
+            }
+            var total = GraphLinker.Result()
+            for (group, output) in zip(result.groups, result.outputs) {
+                recordUsage(output, tier: result.tier, feature: "extraction")
+                let batch = group.compactMap { chunks.indices.contains($0) ? chunks[$0] : nil }
+                let linked = await GraphLinker.link(output.graph, chunks: batch, resolver: resolver, now: now())
+                total.mentions += linked.mentions
+                total.edges += linked.edges
+                total.nodesCreated += linked.nodesCreated
+            }
+            article.stage = .linked
+            outcomes[article.id] = .linked(total)
+        }
+        return outcomes
+    }
+
+    /// Tries `job`'s extractors in order until one answers for all of its text.
+    nonisolated private static func extract(_ job: ExtractionJob) async -> ExtractionResult {
+        for extractor in job.extractors {
+            if Task.isCancelled { return ExtractionResult(id: job.id, cancelled: true) }
+            let limit = extractor.tier == .onDevice ? maxOnDeviceBatches : 1
+            let groups = Array(batches(lengths: job.texts.map(\.count), maxCharacters: extractor.maxInputCharacters)
+                .prefix(limit))
+            do {
+                var outputs: [ExtractionOutput] = []
+                for group in groups {
+                    let text = group.map { job.texts[$0] }.joined(separator: "\n\n")
+                    outputs.append(try await extractor.extract(text))
+                }
+                return ExtractionResult(id: job.id, tier: extractor.tier, groups: groups, outputs: outputs)
+            } catch is CancellationError {
+                return ExtractionResult(id: job.id, cancelled: true)
+            } catch {
+                continue
+            }
+        }
+        return ExtractionResult(id: job.id)
+    }
+
+    private func recordUsage(_ output: ExtractionOutput, tier: ExtractionTier?, feature: String) {
+        guard let tokens = output.usage else { return }
+        let record = UsageLedger.record(provider: output.provider ?? tier?.rawValue ?? "", model: output.model ?? "",
+                                        feature: feature, inputTokens: tokens.inputTokens,
+                                        outputTokens: tokens.outputTokens, reportedCostUSD: tokens.costUSD,
+                                        context: context, now: now())
+        usageRecords.append(record)
     }
 
     // MARK: Conversation turns
@@ -230,6 +375,24 @@ public final class GraphIndexer {
             total.nodesCreated += linked.nodesCreated
         }
         return total
+    }
+
+    /// Positions of consecutive texts of these `lengths`, grouped up to `maxCharacters`.
+    nonisolated static func batches(lengths: [Int], maxCharacters: Int) -> [[Int]] {
+        var result: [[Int]] = []
+        var current: [Int] = []
+        var length = 0
+        for (index, size) in lengths.enumerated() {
+            if !current.isEmpty, length + size > maxCharacters {
+                result.append(current)
+                current = []
+                length = 0
+            }
+            current.append(index)
+            length += size
+        }
+        if !current.isEmpty { result.append(current) }
+        return result
     }
 
     /// Consecutive chunks grouped up to `maxCharacters` of text.

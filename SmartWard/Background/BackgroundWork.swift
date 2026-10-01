@@ -193,6 +193,7 @@ struct BackgroundRefreshSettingsSection: View {
     @Environment(\.modelContext) private var context
     @State private var ingest = IngestController.shared
     @State private var pipeline = PipelineController.shared
+    @AppStorage(PipelineController.whileOpenKey) private var indexWhileOpen = true
 
     private var eagerness: Binding<RefreshEagerness> {
         Binding(get: { RefreshEagerness(rawValue: eagernessRaw) ?? .normal },
@@ -216,7 +217,13 @@ struct BackgroundRefreshSettingsSection: View {
                 }
             }
             .disabled(isRefreshing)
-            LabeledContent("Waiting to be indexed", value: "\(pipeline.waiting)")
+            LabeledContent("Not yet searchable", value: "\(pipeline.backlog.notSearchable)")
+            LabeledContent("Waiting for the knowledge graph", value: "\(pipeline.backlog.graphPending)")
+            if pipeline.backlog.graphSkipped > 0 {
+                LabeledContent("Left out of the graph", value: "\(pipeline.backlog.graphSkipped)")
+            }
+            Toggle("Keep indexing while SmartWard is open", isOn: $indexWhileOpen)
+                .onChange(of: indexWhileOpen) { _, on in pipeline.indexWhileOpen(on, context: context) }
             if !lastRun.isEmpty {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(lastRun)
@@ -228,7 +235,7 @@ struct BackgroundRefreshSettingsSection: View {
         } header: {
             Text("Background refresh")
         } footer: {
-            Text("iOS decides the actual time from its own budget — battery, how often you open SmartWard — so this only changes how soon the next refresh is allowed to run, not a fixed schedule. Refresh now always fetches immediately, in the background if you leave the app. If iOS ends a run early, the line above says how far it got; the rest carries on next time. Keeping the app open and plugged in helps.")
+            Text("iOS decides the actual time from its own budget — battery, how often you open SmartWard — so this only changes how soon the next refresh is allowed to run, not a fixed schedule. Refresh now always fetches immediately, in the background if you leave the app. If iOS ends a run early, the line above says how far it got; the rest carries on next time. Articles are searchable and readable as soon as they're indexed; adding them to the knowledge graph comes after, done by your provider (one call per article, counted in Usage) or, when it can't, Apple Intelligence on this device. An article whose graph extraction fails twice is left out of the graph but stays searchable. Keeping indexing going while the app is open uses more battery; turn it off to index only after a refresh and overnight on power.")
         }
         .task { pipeline.refreshWaiting(context: context) }
     }

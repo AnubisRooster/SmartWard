@@ -79,11 +79,13 @@ struct RootView: View {
             switch phase {
             case .active:
                 Task { await ModelCatalogController.shared.load() }
+                PipelineController.shared.indexWhileOpen(true, context: context)
                 // Items shared while the app was closed.
                 if ShareIntake.importPending(context: context) > 0 {
                     Task { await PipelineController.shared.process(context: context) }
                 }
             case .background:
+                PipelineController.shared.indexWhileOpen(false, context: context)
                 BackgroundWork.schedule()
             default:
                 break

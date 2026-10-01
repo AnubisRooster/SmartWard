@@ -18,6 +18,14 @@ final class PipelineController {
     nonisolated static let strengthKey = "triage.strength"
     /// Foreground runs stop after this long; the rest waits for the next run.
     static let foregroundBudget: TimeInterval = 25
+    /// Settings → Background refresh: keep indexing in short runs while the
+    /// app is open, rather than only after a refresh or on power overnight.
+    nonisolated static let whileOpenKey = "indexing.whileOpen"
+
+    static var indexesWhileOpen: Bool {
+        let defaults = UserDefaults.standard
+        return defaults.object(forKey: whileOpenKey) == nil ? true : defaults.bool(forKey: whileOpenKey)
+    }
 
     private(set) var isRunning = false
     private(set) var lastReport: PipelineRunner.Report?
@@ -27,6 +35,9 @@ final class PipelineController {
     private(set) var indexProgress: StepProgress?
     /// Articles still waiting to be indexed, as of the last run or `refreshWaiting`.
     private(set) var waiting = 0
+    /// The same, split: not yet searchable, waiting for the graph, left out of it.
+    private(set) var backlog = PipelineRunner.Backlog()
+    @ObservationIgnored private var whileOpenTask: Task<Void, Never>?
 
     var strength: Triage.Strength {
         Triage.Strength(rawValue: UserDefaults.standard.string(forKey: Self.strengthKey) ?? "") ?? .balanced
@@ -34,8 +45,42 @@ final class PipelineController {
 
     /// Re-counts the articles waiting to be indexed, without running anything.
     func refreshWaiting(context: ModelContext) {
-        waiting = (try? PipelineRunner.waitingCount(context: context,
-                                                    includesLinking: ExtractionSettings.tiers() != nil)) ?? waiting
+        guard let counted = try? PipelineRunner.backlog(context: context,
+                                                        includesLinking: ExtractionSettings.tiers() != nil) else { return }
+        backlog = counted
+        waiting = counted.total
+    }
+
+    /// While the app is open (and the setting is on), works through the
+    /// backlog in short runs one after another; stops when it goes to the
+    /// background. A run that gets nothing done (no allowed extractor, budget
+    /// spent) waits a couple of minutes before the next try.
+    func indexWhileOpen(_ open: Bool, context: ModelContext) {
+        whileOpenTask?.cancel()
+        whileOpenTask = nil
+        guard open, Self.indexesWhileOpen else { return }
+        whileOpenTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                guard let self else { return }
+                var pause: TimeInterval = 5
+                if self.isRunning {
+                    pause = 5
+                } else if let report = await self.process(context: context) {
+                    let progressed = report.triaged + report.triagedOut + report.embedded + report.linked
+                        + report.turnsIndexed + report.summarized > 0
+                    if report.remaining == 0 {
+                        pause = 60
+                    } else if !progressed {
+                        pause = 120
+                    } else {
+                        pause = 2
+                    }
+                } else {
+                    pause = 120
+                }
+                try? await Task.sleep(nanoseconds: UInt64(pause * 1_000_000_000))
+            }
+        }
     }
 
     /// - Parameter progress: steps done and total, after each step (see `PipelineRunner.run`).
@@ -69,7 +114,7 @@ final class PipelineController {
                 progress?(completed, total)
             }
             lastReport = report
-            waiting = report.remaining
+            refreshWaiting(context: context)
             SearchController.shared.markStale()
             return report
         } catch {
