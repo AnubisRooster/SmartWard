@@ -7,52 +7,32 @@ import KnowledgeStore
 import Pipeline
 import StrategistCore
 
-/// T1 extraction (PLAN §5.3): Apple Foundation Models with guided
-/// generation, on-device. The default for articles, and the only tier that
-/// ever sees private-repo content or off-the-record chats.
+/// T1 extraction (PLAN §5.3): Apple Foundation Models, on-device. The
+/// fallback for articles when your provider can't take them, and the only
+/// tier that ever sees private-repo content or off-the-record chats.
 struct FoundationModelsEntityExtractor: EntityExtracting {
     let tier = ExtractionTier.onDevice
     /// Leaves room in the 4,096-token window for instructions and output.
     let maxInputCharacters = 4_000
 
-    @Generable
-    struct GeneratedEntity {
-        @Guide(description: "The entity's most common name")
-        var name: String
-        @Guide(description: "What kind of entity it is",
-               .anyOf(["concept", "technique", "model", "paper", "org", "person", "tool", "dataset"]))
-        var type: String
-    }
-
-    @Generable
-    struct GeneratedRelation {
-        @Guide(description: "Name of an entity from the entities list")
-        var source: String
-        @Guide(description: "Name of another entity from the entities list")
-        var target: String
-        @Guide(description: "How the source relates to the target",
-               .anyOf(["RELATES_TO", "BUILDS_ON", "IMPROVES_ON", "COMPETES_WITH", "USES",
-                       "EVALUATED_ON", "AUTHORED_BY", "RELEASED_BY"]))
-        var type: String
-    }
-
-    @Generable
-    struct GeneratedGraph {
-        @Guide(description: "The specific things the document is about", .maximumCount(15))
-        var entities: [GeneratedEntity]
-        @Guide(description: "Relations the document states between listed entities", .maximumCount(15))
-        var relations: [GeneratedRelation]
-    }
-
+    /// Plain text with Apple's relaxed guardrails (meant for transforming text
+    /// you were given): the default ones, which apply to guided generation,
+    /// turn down plenty of harmless articles as "unsafe", and every refusal
+    /// used to leave an article retried forever.
     func extract(_ text: String) async throws -> ExtractionOutput {
-        let session = LanguageModelSession(instructions: ExtractionPrompt.instructions)
+        let model = SystemLanguageModel(useCase: .general, guardrails: .permissiveContentTransformations)
+        let session = LanguageModelSession(model: model, instructions: ExtractionText.instructions)
         let prompt = ExtractionPrompt.user(String(text.prefix(maxInputCharacters)))
-        let generated = try await session.respond(to: prompt, generating: GeneratedGraph.self).content
-        let graph = ExtractedGraph(
-            entities: generated.entities.map { ExtractedGraph.Entity(name: $0.name, type: $0.type) },
-            relations: generated.relations.map { ExtractedGraph.Relation(source: $0.source, target: $0.target, type: $0.type) })
-        return ExtractionOutput(graph: graph.sanitized())
+        let reply = try await session.respond(to: prompt).content
+        // A refusal in words has no ENTITY lines: that's a failure, so the next extractor gets a turn.
+        guard let graph = ExtractionText.parse(reply) else { throw ExtractionDeclined() }
+        return ExtractionOutput(graph: graph)
     }
+}
+
+/// The on-device model answered without a usable graph.
+struct ExtractionDeclined: LocalizedError {
+    var errorDescription: String? { "The on-device model didn't extract anything from this article." }
 }
 
 /// Which provider and model do T2 extraction (D2).
@@ -123,7 +103,7 @@ struct KnowledgeGraphSettingsSection: View {
         } header: {
             Text("Knowledge graph")
         } footer: {
-            Text("Articles are read and summarized on-device with Apple Intelligence, or by your provider when Apple Intelligence is off. Chats and public repo docs go to your provider for richer themes; a cheap model is plenty. Off-the-record chats and private repos are never sent.")
+            Text("Articles, chats and public repo docs are added to the knowledge graph by your provider (one call per article, counted in Usage and the daily budget); a cheap model is plenty. When the provider fails or today\u{2019}s budget is spent, Apple Intelligence on this device does it instead. An article that fails twice is left out of the graph but stays searchable. Off-the-record chats and private repos are never sent.")
         }
     }
 }

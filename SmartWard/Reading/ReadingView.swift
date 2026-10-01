@@ -168,9 +168,9 @@ struct ReadingView: View {
                 }
                 .listRowSeparator(.hidden)
             }
-            if pipeline.waiting > 0 {
-                Label(pipeline.waiting == 1 ? "1 article waiting to be indexed"
-                                            : "\(pipeline.waiting) articles waiting to be indexed",
+            if pipeline.backlog.notSearchable > 0 {
+                Label(pipeline.backlog.notSearchable == 1 ? "1 new article being indexed"
+                                                          : "\(pipeline.backlog.notSearchable) new articles being indexed",
                       systemImage: "clock")
                     .font(.footnote)
                     .foregroundStyle(.secondary)

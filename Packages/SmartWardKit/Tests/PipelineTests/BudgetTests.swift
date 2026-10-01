@@ -40,7 +40,7 @@ final class BudgetTests: XCTestCase {
         _ = try await runner.run(context: context, until: now + 60)
         XCTAssertTrue(byok.inputs.isEmpty, "nothing goes to the provider once the budget is spent")
         XCTAssertNotNil(turn.indexedAt, "the turn fell back to on-device extraction")
-        XCTAssertEqual(article.stage, .linked, "articles are on-device first anyway")
+        XCTAssertEqual(article.stage, .linked, "over budget, articles fall back to the device model")
         XCTAssertEqual(try context.fetchCount(FetchDescriptor<UsageRecord>()), 1)
 
         // With only the provider available, over-budget work waits.
@@ -66,6 +66,6 @@ final class BudgetTests: XCTestCase {
                                     extraction: ExtractionTiers(onDevice: onDevice, byok: byok),
                                     budget: DailyBudget(capUSD: 1), now: { self.now })
         _ = try await runner.run(context: context, until: now + 60)
-        XCTAssertEqual(byok.inputs.count, 1, "conversation turns go to your provider (D2)")
+        XCTAssertEqual(byok.inputs.count, 2, "the conversation turn (D2) and the article go to your provider")
     }
 }

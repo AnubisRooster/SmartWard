@@ -116,6 +116,14 @@ public struct ExtractionTiers: Sendable {
         self.byok = byok
     }
 
+    /// The extractor for `tier`, if there is one.
+    public func extractor(for tier: ExtractionTier) -> (any EntityExtracting)? {
+        switch tier {
+        case .onDevice: return onDevice
+        case .byok: return byok
+        }
+    }
+
     /// The first available extractor in `preference`.
     public func first(in preference: [ExtractionTier]) -> (any EntityExtracting)? {
         for tier in preference {
@@ -125,6 +133,54 @@ public struct ExtractionTiers: Sendable {
             }
         }
         return nil
+    }
+}
+
+/// A plain-text answer format for the on-device model. Apple's relaxed
+/// guardrails (the ones meant for working on text you were given) only apply
+/// to plain-text output, and the default ones turn down plenty of harmless
+/// articles as "unsafe", so on-device extraction answers in lines that
+/// `parse` reads back.
+public enum ExtractionText {
+    public static let instructions = ExtractionPrompt.instructions + """
+
+    Answer in plain text only, one item per line, and nothing else:
+    ENTITY: name | type
+    RELATION: source name | RELATION_TYPE | target name
+    type is one of: \(ExtractedGraph.entityTypes.joined(separator: ", ")).
+    RELATION_TYPE is one of: \(ExtractedGraph.relationTypes.joined(separator: ", ")).
+    List at most 15 entities and 15 relations.
+    """
+
+    /// The graph in a plain-text answer, sanitized; `nil` when it has no
+    /// entities at all (a refusal in words, or nothing usable).
+    public static func parse(_ text: String) -> ExtractedGraph? {
+        var entities: [ExtractedGraph.Entity] = []
+        var relations: [ExtractedGraph.Relation] = []
+        for raw in text.split(whereSeparator: \.isNewline) {
+            var line = raw.trimmingCharacters(in: .whitespaces)
+            // List markers and emphasis: "- ", "* ", "1. ", "**ENTITY:**".
+            if let marker = line.range(of: #"^(?:[-–•*]|\d{1,2}[.)])\s+"#, options: .regularExpression) {
+                line.removeSubrange(marker)
+            }
+            line = line.replacingOccurrences(of: "**", with: "").replacingOccurrences(of: "`", with: "")
+            let upper = line.uppercased()
+            let parts: (String) -> [String] = { body in
+                body.split(separator: "|", omittingEmptySubsequences: false)
+                    .map { $0.trimmingCharacters(in: .whitespaces) }
+            }
+            if upper.hasPrefix("ENTITY:") {
+                let fields = parts(String(line.dropFirst("ENTITY:".count)))
+                guard let name = fields.first, !name.isEmpty else { continue }
+                entities.append(.init(name: name, type: fields.count > 1 ? fields[1] : "concept"))
+            } else if upper.hasPrefix("RELATION:") {
+                let fields = parts(String(line.dropFirst("RELATION:".count)))
+                guard fields.count >= 3 else { continue }
+                relations.append(.init(source: fields[0], target: fields[2], type: fields[1]))
+            }
+        }
+        let graph = ExtractedGraph(entities: entities, relations: relations).sanitized()
+        return graph.entities.isEmpty ? nil : graph
     }
 }
 

@@ -189,7 +189,8 @@ public struct ArticleSummarizer {
         let text = Self.text(of: article)
         guard text.count >= Self.minimumCharacters else { throw ArticleSummaryError.tooShort }
 
-        var preference = GraphIndexer.tiers(for: article, links: links)
+        // Summaries stay on-device first; only graph extraction asks your provider first.
+        var preference = GraphIndexer.tiers(for: article, links: links, providerFirst: false)
         if let budget, budget.isExhausted(context: context, now: now()) {
             preference = preference.filter { $0 != .byok }
         }

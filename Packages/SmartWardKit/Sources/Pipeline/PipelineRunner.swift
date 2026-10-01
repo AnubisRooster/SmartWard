@@ -135,13 +135,54 @@ public final class PipelineRunner {
 
     private var stages: [ArticleStage] { Self.stages(includesLinking: extraction != nil) }
 
+    /// Articles in `stage` a run still works on. An `embedded` article whose
+    /// graph extraction kept failing is left alone.
+    static func pending(_ stage: ArticleStage) -> Predicate<Article> {
+        let raw = stage.rawValue
+        guard stage == .embedded else { return #Predicate { $0.stageRaw == raw } }
+        let limit = GraphIndexer.maxGraphAttempts
+        return #Predicate { $0.stageRaw == raw && $0.graphAttempts < limit }
+    }
+
     /// How many articles are still in a stage a run works through: what
     /// `Report.remaining` says after a run, without running anything.
     public static func waitingCount(context: ModelContext, includesLinking: Bool) throws -> Int {
         try stages(includesLinking: includesLinking).reduce(0) { total, stage in
-            let raw = stage.rawValue
-            return total + (try context.fetchCount(FetchDescriptor<Article>(predicate: #Predicate { $0.stageRaw == raw })))
+            total + (try context.fetchCount(FetchDescriptor<Article>(predicate: pending(stage))))
         }
+    }
+
+    /// What's waiting, split the way it matters to you.
+    public struct Backlog: Equatable, Sendable {
+        /// Not yet readable in search (still to be triaged, fetched or embedded).
+        public var notSearchable = 0
+        /// Searchable, waiting to be added to the knowledge graph.
+        public var graphPending = 0
+        /// Searchable, but left out of the graph after extraction kept failing.
+        public var graphSkipped = 0
+
+        public init(notSearchable: Int = 0, graphPending: Int = 0, graphSkipped: Int = 0) {
+            self.notSearchable = notSearchable
+            self.graphPending = graphPending
+            self.graphSkipped = graphSkipped
+        }
+
+        public var total: Int { notSearchable + graphPending }
+    }
+
+    public static func backlog(context: ModelContext, includesLinking: Bool) throws -> Backlog {
+        var backlog = Backlog()
+        for stage in [ArticleStage.fetched, .cleaned, .triaged] {
+            backlog.notSearchable += try context.fetchCount(FetchDescriptor<Article>(predicate: pending(stage)))
+        }
+        guard includesLinking else { return backlog }
+        backlog.graphPending = try context.fetchCount(FetchDescriptor<Article>(predicate: pending(.embedded)))
+        let raw = ArticleStage.embedded.rawValue
+        let limit = GraphIndexer.maxGraphAttempts
+        backlog.graphSkipped = try context.fetchCount(FetchDescriptor<Article>(predicate: #Predicate {
+            $0.stageRaw == raw && $0.graphAttempts >= limit
+        }))
+        return backlog
     }
 
     /// Steps (one per article moved on, or turn indexed) an article at
@@ -189,8 +230,7 @@ public final class PipelineRunner {
         if progress != nil {
             let linking = extraction != nil
             for stage in stages {
-                let raw = stage.rawValue
-                let count = try context.fetchCount(FetchDescriptor<Article>(predicate: #Predicate { $0.stageRaw == raw }))
+                let count = try context.fetchCount(FetchDescriptor<Article>(predicate: Self.pending(stage)))
                 total += count * Self.steps(from: stage, includesLinking: linking)
                 // Articles not yet indexed get a summary once they are.
                 if summarizer != nil, stage != .embedded { total += count }
@@ -210,7 +250,7 @@ public final class PipelineRunner {
 
         if total > 0 { progress?(0, total) }
 
-        while now() < deadline, !Task.isCancelled {
+        work: while now() < deadline, !Task.isCancelled {
             if let graph, let turn = try nextTurn(excluding: skipped, context: context) {
                 do {
                     if try await graph.index(turn) != nil {
@@ -249,6 +289,38 @@ public final class PipelineRunner {
                 progress?(min(completed, total), total)
                 continue
             }
+            if article.stage == .embedded {
+                // Graph extraction. Provider extractions go a few at a time;
+                // an article is left for a later run when no allowed extractor
+                // is available or every one failed (`graphAttempts` counts those).
+                guard let graph else {
+                    skipped.insert(article.id)
+                    continue
+                }
+                var batch = [article]
+                if graph.prefersProvider(article, links: links) {
+                    let others = try nextEmbedded(excluding: skipped.union([article.id]),
+                                                  limit: GraphIndexer.concurrentExtractions - 1, context: context)
+                    batch += others.filter { graph.prefersProvider($0, links: links) }
+                }
+                let outcomes = await graph.index(batch, links: links)
+                var cancelled = false
+                for item in batch {
+                    switch outcomes[item.id] {
+                    case .linked?: report.linked += 1
+                    case .cancelled?:
+                        cancelled = true
+                        skipped.insert(item.id)
+                    default: skipped.insert(item.id)
+                    }
+                }
+                try context.save()
+                completed += batch.count
+                progress?(min(completed, total), total)
+                if cancelled { break work }
+                continue
+            }
+
             switch article.stage {
             case .fetched:
                 let relevant = try await triage(article, model: model, report: &report)
@@ -257,20 +329,6 @@ public final class PipelineRunner {
                 }
             case .cleaned:
                 _ = try await triage(article, model: model, report: &report)
-            case .embedded:
-                // Leave it for a later run when no allowed extractor is
-                // available or the extraction failed.
-                do {
-                    if try await graph?.index(article, links: links) != nil {
-                        report.linked += 1
-                    } else {
-                        skipped.insert(article.id)
-                    }
-                } catch is CancellationError {
-                    break
-                } catch {
-                    skipped.insert(article.id)
-                }
             default:
                 await indexer.index(article, context: context)
                 report.embedded += 1
@@ -308,11 +366,19 @@ public final class PipelineRunner {
 
     /// Newest first: fresh items are the ones you'll read next.
     private func next(_ stage: ArticleStage, excluding skipped: Set<UUID>, context: ModelContext) throws -> Article? {
-        let raw = stage.rawValue
-        var descriptor = FetchDescriptor<Article>(predicate: #Predicate { $0.stageRaw == raw },
+        var descriptor = FetchDescriptor<Article>(predicate: Self.pending(stage),
                                                   sortBy: [SortDescriptor(\.ingestedAt, order: .reverse)])
         descriptor.fetchLimit = Self.batchSize + skipped.count
         return try context.fetch(descriptor).first { !skipped.contains($0.id) }
+    }
+
+    /// Up to `limit` more articles waiting for graph extraction, newest first.
+    private func nextEmbedded(excluding skipped: Set<UUID>, limit: Int, context: ModelContext) throws -> [Article] {
+        guard limit > 0 else { return [] }
+        var descriptor = FetchDescriptor<Article>(predicate: Self.pending(.embedded),
+                                                  sortBy: [SortDescriptor(\.ingestedAt, order: .reverse)])
+        descriptor.fetchLimit = limit + skipped.count
+        return Array(try context.fetch(descriptor).filter { !skipped.contains($0.id) }.prefix(limit))
     }
 
     /// New articles are summarized this long after ingestion; older ones
