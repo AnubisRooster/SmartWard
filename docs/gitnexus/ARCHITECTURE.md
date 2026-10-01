@@ -6,7 +6,7 @@ _Auto-generated from the GitNexus knowledge graph on every push to `main`. Do no
 
 | nodes | edges |
 | ----- | ----- |
-| 8206 | 47800 |
+| 8326 | 48065 |
 
 ## God nodes (highest out-degree, tests excluded)
 
@@ -17,8 +17,8 @@ _Auto-generated from the GitNexus knowledge graph on every push to `main`. Do no
 | DigestBuilder.swift | Packages/SmartWardKit/Sources/Pipeline/DigestBuilder.swift | 237 |
 | GraphEditing.swift | Packages/SmartWardKit/Sources/Pipeline/GraphEditing.swift | 236 |
 | HybridSearch.swift | Packages/SmartWardKit/Sources/Pipeline/HybridSearch.swift | 236 |
+| GraphIndexer.swift | Packages/SmartWardKit/Sources/Pipeline/GraphIndexer.swift | 229 |
 | VoiceCommands.swift | Packages/SmartWardKit/Sources/Pipeline/VoiceCommands.swift | 222 |
+| PipelineRunner.swift | Packages/SmartWardKit/Sources/Pipeline/PipelineRunner.swift | 221 |
+| Extraction.swift | Packages/SmartWardKit/Sources/Pipeline/Extraction.swift | 219 |
 | LibraryArchive.swift | Packages/SmartWardKit/Sources/KnowledgeStore/LibraryArchive.swift | 214 |
-| GraphRetrieval.swift | Packages/SmartWardKit/Sources/Pipeline/GraphRetrieval.swift | 214 |
-| Onboarding.swift | Packages/SmartWardKit/Sources/StrategistCore/Onboarding.swift | 214 |
-| BriefService.swift | Packages/SmartWardKit/Sources/StrategistCore/BriefService.swift | 213 |
