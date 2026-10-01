@@ -344,6 +344,81 @@ final class GraphIndexingTests: XCTestCase {
         XCTAssertEqual(byok.inputs.count, 1)
         XCTAssertEqual(onDevice.inputs.count, 1)
         XCTAssertEqual(article.graphAttempts, 0, "a fallback that works isn't a failure")
+
+        // And Settings → Indexing details can say what happened.
+        XCTAssertEqual(report.graph.providerFailures, 1)
+        XCTAssertEqual(report.graph.providerCalls, 1)
+        XCTAssertEqual(report.graph.onDeviceLinked, 1)
+        XCTAssertEqual(report.graph.providerLinked, 0)
+        XCTAssertEqual(report.graph.errors.count, 1)
+        XCTAssertTrue(report.graph.errors[0].hasPrefix("Provider: "))
+        XCTAssertFalse(report.graph.budgetPaused)
+    }
+
+    @MainActor
+    func testTheStatsSayWhenTodaysBudgetPausedTheProvider() async throws {
+        let container = try KnowledgeSchema.makeContainer(inMemory: true)
+        let context = container.mainContext
+        UsageLedger.record(provider: "openrouter", model: "m", feature: "chat", inputTokens: 1, outputTokens: 1,
+                           reportedCostUSD: 5, context: context, now: now)
+        let article = await embeddedArticle("https://x.example/1", context: context)
+        article.stage = .embedded
+        try context.save()
+
+        let byok = FakeExtractor(tier: .byok, graph: agentsGraph)
+        let onDevice = FakeExtractor(tier: .onDevice, graph: agentsGraph)
+        let runner = PipelineRunner(embedder: fakeModel, fullText: nil,
+                                    extraction: ExtractionTiers(onDevice: onDevice, byok: byok),
+                                    budget: DailyBudget(capUSD: 1), now: { self.now })
+        let report = try await runner.run(context: context, until: now + 60)
+        XCTAssertTrue(byok.inputs.isEmpty)
+        XCTAssertTrue(report.graph.budgetPaused)
+        XCTAssertEqual(report.graph.onDeviceLinked, 1)
+        XCTAssertEqual(report.graph.onDeviceCalls, 1)
+    }
+
+    func testStatsAddUpAcrossRunsKeepingTheLatestErrorsFirst() {
+        var session = GraphRunStats()
+        var first = GraphRunStats()
+        first.providerLinked = 3
+        first.providerCalls = 3
+        first.providerSeconds = 6
+        first.errors = ["Provider: HTTP 400: bad model"]
+        var second = GraphRunStats()
+        second.providerFailures = 2
+        second.providerCalls = 2
+        second.providerSeconds = 2
+        second.budgetPaused = true
+        second.errors = ["Provider: HTTP 429: rate limited", "Provider: HTTP 400: bad model"]
+        session.merge(first)
+        session.merge(second)
+        XCTAssertEqual(session.providerLinked, 3)
+        XCTAssertEqual(session.providerFailures, 2)
+        XCTAssertEqual(session.providerSecondsPerCall, 8.0 / 5.0)
+        XCTAssertNil(session.onDeviceSecondsPerCall)
+        XCTAssertTrue(session.budgetPaused)
+        XCTAssertEqual(session.errors, ["Provider: HTTP 429: rate limited", "Provider: HTTP 400: bad model"],
+                       "no repeats, newest first")
+
+        session.merge(GraphRunStats())
+        XCTAssertTrue(session.budgetPaused, "a run that did nothing doesn't clear it")
+        var working = GraphRunStats()
+        working.providerLinked = 1
+        session.merge(working)
+        XCTAssertFalse(session.budgetPaused, "a run that used the provider does")
+
+        var many = GraphRunStats()
+        for index in 0..<20 { many.noteError("error \(index)") }
+        XCTAssertEqual(many.errors.count, GraphRunStats.maxErrors)
+        XCTAssertEqual(many.errors.first, "error 19")
+    }
+
+    func testFailuresAreDescribedInOneLine() {
+        let http = BYOKLLMKit.LLMCompletionError.http(status: 400, body: "model not found\nretry later")
+        XCTAssertEqual(GraphIndexer.describe(http), "HTTP 400: model not found retry later")
+        let long = GraphIndexer.describe(LLMCompletionError.provider(String(repeating: "x", count: 500)))
+        XCTAssertLessThanOrEqual(long.count, 241)
+        XCTAssertTrue(long.hasSuffix("…"))
     }
 
     @MainActor

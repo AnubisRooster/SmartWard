@@ -80,6 +80,8 @@ public final class PipelineRunner {
         public var summarized = 0
         /// Articles still waiting in a stage this run didn't reach.
         public var remaining = 0
+        /// What graph extraction did, for Settings → Indexing details.
+        public var graph = GraphRunStats()
 
         public init(triaged: Int = 0, triagedOut: Int = 0, fullTextFetched: Int = 0,
                     embedded: Int = 0, linked: Int = 0, turnsIndexed: Int = 0, summarized: Int = 0,
@@ -339,6 +341,7 @@ public final class PipelineRunner {
         }
 
         report.remaining = try Self.waitingCount(context: context, includesLinking: extraction != nil)
+        report.graph = graph?.stats ?? GraphRunStats()
         return report
     }
 

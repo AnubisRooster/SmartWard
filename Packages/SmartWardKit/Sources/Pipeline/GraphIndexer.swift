@@ -111,6 +111,84 @@ private struct ExtractionJob: Sendable {
     let texts: [String]
 }
 
+/// One extractor's try at one article.
+private struct ExtractionAttempt: Sendable {
+    let tier: ExtractionTier
+    let calls: Int
+    let seconds: Double
+    /// Why it failed, or `nil` when it answered.
+    let error: String?
+}
+
+/// What graph extraction did in a run, for Settings → Indexing details:
+/// which tier linked what, how long calls took, and why they failed.
+public struct GraphRunStats: Equatable, Sendable {
+    public var providerLinked = 0
+    public var onDeviceLinked = 0
+    public var providerFailures = 0
+    public var onDeviceFailures = 0
+    public var providerCalls = 0
+    public var onDeviceCalls = 0
+    public var providerSeconds: Double = 0
+    public var onDeviceSeconds: Double = 0
+    /// Articles no allowed extractor could take (left for a later run).
+    public var unavailable = 0
+    /// Your provider was skipped because today's budget is spent.
+    public var budgetPaused = false
+    /// The latest distinct failures, newest first.
+    public var errors: [String] = []
+
+    public static let maxErrors = 8
+
+    public init() {}
+
+    public var isEmpty: Bool { self == GraphRunStats() }
+
+    /// Average seconds per call, or `nil` with no calls.
+    public var providerSecondsPerCall: Double? { providerCalls > 0 ? providerSeconds / Double(providerCalls) : nil }
+    public var onDeviceSecondsPerCall: Double? { onDeviceCalls > 0 ? onDeviceSeconds / Double(onDeviceCalls) : nil }
+
+    mutating func noteError(_ text: String) {
+        errors.removeAll { $0 == text }
+        errors.insert(text, at: 0)
+        if errors.count > Self.maxErrors { errors.removeLast(errors.count - Self.maxErrors) }
+    }
+
+    /// Adds a later run's numbers to these.
+    public mutating func merge(_ later: GraphRunStats) {
+        providerLinked += later.providerLinked
+        onDeviceLinked += later.onDeviceLinked
+        providerFailures += later.providerFailures
+        onDeviceFailures += later.onDeviceFailures
+        providerCalls += later.providerCalls
+        onDeviceCalls += later.onDeviceCalls
+        providerSeconds += later.providerSeconds
+        onDeviceSeconds += later.onDeviceSeconds
+        unavailable += later.unavailable
+        budgetPaused = later.budgetPaused || (budgetPaused && later.isEmpty)
+        for error in later.errors.reversed() { noteError(error) }
+    }
+
+    fileprivate mutating func record(_ attempt: ExtractionAttempt) {
+        switch attempt.tier {
+        case .byok:
+            providerCalls += attempt.calls
+            providerSeconds += attempt.seconds
+            if let error = attempt.error {
+                providerFailures += 1
+                noteError("Provider: " + error)
+            }
+        case .onDevice:
+            onDeviceCalls += attempt.calls
+            onDeviceSeconds += attempt.seconds
+            if let error = attempt.error {
+                onDeviceFailures += 1
+                noteError("On device: " + error)
+            }
+        }
+    }
+}
+
 /// What extraction of one `ExtractionJob` produced.
 private struct ExtractionResult: Sendable {
     let id: UUID
@@ -120,6 +198,7 @@ private struct ExtractionResult: Sendable {
     var groups: [[Int]] = []
     var outputs: [ExtractionOutput] = []
     var cancelled = false
+    var attempts: [ExtractionAttempt] = []
 }
 
 public enum GraphIndexError: Error, Equatable {
@@ -147,6 +226,8 @@ public final class GraphIndexer {
     private let now: () -> Date
     private let chunker = RetrievalKit.Chunker(targetSize: 1_200, overlapSentences: 0)
 
+    /// What graph extraction did this run (articles; turns aren't counted).
+    public private(set) var stats = GraphRunStats()
     /// Usage rows written this run (T2 calls), for reporting.
     public private(set) var usageRecords: [UsageRecord] = []
     /// When today's budget is used up, nothing goes to your provider: work
@@ -209,7 +290,10 @@ public final class GraphIndexer {
 
     /// The extractors that may see `article` right now, in order of preference.
     private func extractors(for article: Article, links: [UUID: ProjectLink]) -> [any EntityExtracting] {
-        withinBudget(Self.tiers(for: article, links: links)).compactMap { tiers.extractor(for: $0) }
+        let preference = Self.tiers(for: article, links: links)
+        let allowed = withinBudget(preference)
+        if allowed.count < preference.count, tiers.byok != nil { stats.budgetPaused = true }
+        return allowed.compactMap { tiers.extractor(for: $0) }
     }
 
     /// Whether `article` would go to your provider first (and so can be
@@ -241,6 +325,7 @@ public final class GraphIndexer {
             let extractors = extractors(for: article, links: links)
             guard !extractors.isEmpty else {
                 outcomes[article.id] = .unavailable
+                stats.unavailable += 1
                 continue
             }
             let chunks = (article.chunks ?? []).sorted { $0.ordinal < $1.ordinal }
@@ -257,6 +342,7 @@ public final class GraphIndexer {
 
         for article in articles {
             guard let result = results[article.id], let chunks = chunksByID[article.id] else { continue }
+            for attempt in result.attempts { stats.record(attempt) }
             if result.cancelled {
                 outcomes[article.id] = .cancelled
                 continue
@@ -283,31 +369,48 @@ public final class GraphIndexer {
             }
             article.stage = .linked
             outcomes[article.id] = .linked(total)
+            if result.tier == .byok { stats.providerLinked += 1 } else { stats.onDeviceLinked += 1 }
         }
         return outcomes
     }
 
     /// Tries `job`'s extractors in order until one answers for all of its text.
     nonisolated private static func extract(_ job: ExtractionJob) async -> ExtractionResult {
+        var attempts: [ExtractionAttempt] = []
         for extractor in job.extractors {
-            if Task.isCancelled { return ExtractionResult(id: job.id, cancelled: true) }
+            if Task.isCancelled { return ExtractionResult(id: job.id, cancelled: true, attempts: attempts) }
             let limit = extractor.tier == .onDevice ? maxOnDeviceBatches : 1
             let groups = Array(batches(lengths: job.texts.map(\.count), maxCharacters: extractor.maxInputCharacters)
                 .prefix(limit))
+            let started = Date()
+            var calls = 0
             do {
                 var outputs: [ExtractionOutput] = []
                 for group in groups {
                     let text = group.map { job.texts[$0] }.joined(separator: "\n\n")
+                    calls += 1
                     outputs.append(try await extractor.extract(text))
                 }
-                return ExtractionResult(id: job.id, tier: extractor.tier, groups: groups, outputs: outputs)
+                attempts.append(ExtractionAttempt(tier: extractor.tier, calls: calls,
+                                                  seconds: Date().timeIntervalSince(started), error: nil))
+                return ExtractionResult(id: job.id, tier: extractor.tier, groups: groups, outputs: outputs,
+                                        attempts: attempts)
             } catch is CancellationError {
-                return ExtractionResult(id: job.id, cancelled: true)
+                return ExtractionResult(id: job.id, cancelled: true, attempts: attempts)
             } catch {
+                attempts.append(ExtractionAttempt(tier: extractor.tier, calls: calls,
+                                                  seconds: Date().timeIntervalSince(started), error: describe(error)))
                 continue
             }
         }
-        return ExtractionResult(id: job.id)
+        return ExtractionResult(id: job.id, attempts: attempts)
+    }
+
+    /// A failure in a line: the provider's own message where there is one.
+    nonisolated static func describe(_ error: Error) -> String {
+        let text = (error as? LocalizedError)?.errorDescription ?? String(describing: error)
+        let flat = text.split(whereSeparator: \.isNewline).joined(separator: " ")
+        return flat.count > 240 ? String(flat.prefix(240)) + "…" : flat
     }
 
     private func recordUsage(_ output: ExtractionOutput, tier: ExtractionTier?, feature: String) {

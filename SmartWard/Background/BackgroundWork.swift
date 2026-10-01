@@ -36,7 +36,7 @@ enum BackgroundWork {
     private static func recordRun(_ label: String, started: Date, stoppedEarly: Bool, fetch: String?,
                                   report: PipelineRunner.Report?) {
         let summary = RunSummary.text(elapsed: Date().timeIntervalSince(started), stoppedEarly: stoppedEarly,
-                                      fetch: fetch, indexed: report?.embedded ?? 0,
+                                      fetch: fetch, indexed: report?.embedded ?? 0, linked: report?.linked ?? 0,
                                       waiting: PipelineController.shared.waiting)
         UserDefaults.standard.set("\(label): \(summary)", forKey: lastRunKey)
         UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: lastRunAtKey)
@@ -222,6 +222,7 @@ struct BackgroundRefreshSettingsSection: View {
             if pipeline.backlog.graphSkipped > 0 {
                 LabeledContent("Left out of the graph", value: "\(pipeline.backlog.graphSkipped)")
             }
+            NavigationLink("Indexing details") { IndexingDetailsView() }
             Toggle("Keep indexing while SmartWard is open", isOn: $indexWhileOpen)
                 .onChange(of: indexWhileOpen) { _, on in pipeline.indexWhileOpen(on, context: context) }
             if !lastRun.isEmpty {
