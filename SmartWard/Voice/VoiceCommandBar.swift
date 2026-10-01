@@ -50,7 +50,8 @@ struct VoiceCommandBar: View {
                 return "\(readout.isPaused ? "Paused" : "Briefing") \(place.number) of \(place.count)"
                     + (title.isEmpty ? "" : " · \(title)")
             }
-            return voice.isArmed ? "Listening…" : "Say \u{201C}SmartWard, …\u{201D}"
+            if voice.isArmed { return "Listening…" }
+            return VoiceCommandController.isHandsFree ? "Listening: just say what you want" : "Say \u{201C}SmartWard, …\u{201D}"
         }
     }
 }

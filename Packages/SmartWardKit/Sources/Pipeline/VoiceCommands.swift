@@ -36,6 +36,10 @@ public enum VoiceCommand: Equatable, Sendable {
     case openMatching(String)
     case openProject(String)
     case readAloud(summaryOnly: Bool)
+    /// Open the article at this 1-based position in the list and read it.
+    case readItem(Int, summaryOnly: Bool)
+    /// Open the article named by these words and read it.
+    case readMatching(String, summaryOnly: Bool)
     case pauseReading, resumeReading, stopReading, nextSection, previousSection
     case star(Bool)
     /// A spoken briefing of the unread articles, gist first.
@@ -98,6 +102,9 @@ public enum VoiceCommand: Equatable, Sendable {
         case .openMatching(let words): return "Looking for \(words)"
         case .openProject(let name): return "Opening \(name)"
         case .readAloud(let summaryOnly): return summaryOnly ? "Reading the summary" : "Reading the article"
+        case .readItem(let number, let summaryOnly):
+            return summaryOnly ? "Reading the summary of number \(number)" : "Reading number \(number)"
+        case .readMatching(let words, _): return "Looking for \(words)"
         case .pauseReading: return "Paused"
         case .resumeReading: return "Continuing"
         case .stopReading: return "Stopped reading"
@@ -154,6 +161,8 @@ public struct VoiceContext: Equatable, Sendable {
     public var isProjectOpen: Bool
     /// The app just asked "…? Say yes or no." and is waiting.
     public var isConfirming: Bool
+    /// Hands-free: while the app is open, phrases need no wake word.
+    public var isHandsFree: Bool
     /// The wake word was just heard, so the next phrase needs no prefix.
     public var isArmed: Bool
     /// The section being read right now.
@@ -164,13 +173,14 @@ public struct VoiceContext: Equatable, Sendable {
 
     public init(tab: VoiceTab = .today, isReaderOpen: Bool = false, isReading: Bool = false,
                 isBriefing: Bool = false, isProjectOpen: Bool = false, isConfirming: Bool = false,
-                isArmed: Bool = false, spokenNow: String = "", items: [String] = [], projects: [String] = []) {
+                isHandsFree: Bool = false, isArmed: Bool = false, spokenNow: String = "", items: [String] = [], projects: [String] = []) {
         self.tab = tab
         self.isReaderOpen = isReaderOpen
         self.isReading = isReading
         self.isBriefing = isBriefing
         self.isProjectOpen = isProjectOpen
         self.isConfirming = isConfirming
+        self.isHandsFree = isHandsFree
         self.isArmed = isArmed
         self.spokenNow = spokenNow
         self.items = items
@@ -511,6 +521,15 @@ public enum VoiceCommandParser {
             return afterWake.isEmpty ? .wakeOnly : interpret(afterWake, context)
         }
         if context.isArmed { return interpret(text, context) }
+        // Hands-free: no wake word needed, except while something is being read,
+        // when the app's own voice is in the room (only the control words count then).
+        if context.isHandsFree && !context.isReading {
+            let result = interpret(text, context)
+            // A lone word that isn't a command ("okay", "hmm") is talk, not a request.
+            if case .unrecognized = result, VoiceText.words(text).count < 2 { return .ignored }
+            if result == .wakeOnly { return .ignored }
+            return result
+        }
         return bare(text, context)
     }
 
@@ -641,6 +660,8 @@ public enum VoiceCommandParser {
         if let named = tabNamed(rest) { return .openTab(named) }
         if let opened = projectCommand(rest, context) { return opened }
 
+        if let reading = readItemCommand(body, context) { return reading }
+
         guard hadVerb else { return nil }
         if let position = itemPosition(rest) { return position }
         let query = matchQuery(rest)
@@ -661,6 +682,36 @@ public enum VoiceCommandParser {
         }
         guard case .openItem(let number)? = itemPosition(words.joined(separator: " ")) else { return nil }
         return number
+    }
+
+    static let readItemVerbs = ["read me the summary of", "read the summary of", "summarize", "read me", "read",
+                                "play me", "play"].sorted { $0.count > $1.count }
+    /// Words that say the rest names an article, so "read the brief" isn't taken for one.
+    static let articleNouns: Set<String> = ["article", "articles", "story", "one", "item", "post", "about", "called",
+                                            "titled", "on", "number", "no"]
+
+    /// "Read the first article", "read me the second one", "play number 3",
+    /// "read the article about agents", "read the summary of the last one".
+    private static func readItemCommand(_ body: String, _ context: VoiceContext) -> VoiceCommand? {
+        guard let verb = readItemVerbs.first(where: { body.hasPrefix($0 + " ") }) else { return nil }
+        let summaryOnly = verb.contains("summar")
+        let rest = String(body.dropFirst(verb.count + 1))
+        if let position = itemPosition(rest) {
+            switch position {
+            case .openItem(let number): return .readItem(number, summaryOnly: summaryOnly)
+            case .openLastItem where !context.items.isEmpty:
+                return .readItem(context.items.count, summaryOnly: summaryOnly)
+            default: break
+            }
+        }
+        // Only when the words say it's an article, and only words that name one.
+        guard !Set(VoiceText.words(rest)).isDisjoint(with: articleNouns) else { return nil }
+        let query = matchQuery(rest)
+        guard !query.isEmpty, !articleNouns.contains(query) else { return nil }
+        if let index = VoiceItemMatcher.best(query, in: context.items) {
+            return .readItem(index + 1, summaryOnly: summaryOnly)
+        }
+        return .readMatching(query, summaryOnly: summaryOnly)
     }
 
     /// What follows one of `prefixes` at the start of `text`, once filler is dropped; `nil` when
@@ -762,6 +813,7 @@ public enum VoiceCommandHelp {
             lines.append("SmartWard, star this")
         }
         if context.tab == .reading {
+            lines.append("SmartWard, read the first article")
             lines.append("SmartWard, open the second one")
             lines.append("SmartWard, open the article about agents")
             lines.append("SmartWard, show starred")
@@ -785,7 +837,7 @@ public enum VoiceCommandHelp {
     /// The first few lines as one spoken answer.
     public static func spoken(for context: VoiceContext, limit: Int = 4) -> String {
         lines(for: context).prefix(limit)
-            .map { $0.replacingOccurrences(of: "SmartWard, ", with: "Say SmartWard, ") }
+            .map { $0.replacingOccurrences(of: "SmartWard, ", with: context.isHandsFree ? "Say " : "Say SmartWard, ") }
             .joined(separator: ". ") + "."
     }
 }
