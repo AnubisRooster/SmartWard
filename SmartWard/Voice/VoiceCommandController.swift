@@ -46,8 +46,16 @@ final class VoiceCommandController {
 
     static let enabledKey = "voice.navigation.enabled"
     static let speakKey = "voice.navigation.speak"
-    /// Whether free wording is worked out by the on-device model when the grammar doesn't know it.
+    /// Whether wording the grammar doesn't know is worked out by a language
+    /// model (your provider, then Apple Intelligence), `VoiceIntentResolver`.
     static let naturalKey = "voice.navigation.natural"
+    /// Hands-free: while the app is open, no wake word is needed.
+    static let handsFreeKey = "voice.navigation.handsFree"
+
+    static var isHandsFree: Bool {
+        let defaults = UserDefaults.standard
+        return defaults.object(forKey: handsFreeKey) == nil ? true : defaults.bool(forKey: handsFreeKey)
+    }
 
     enum Phase: Equatable {
         case off, starting, listening
@@ -86,6 +94,8 @@ final class VoiceCommandController {
     @ObservationIgnored private var captionGeneration = 0
     /// A change waiting for its yes (`VoiceConfirmationGate`).
     @ObservationIgnored private var gate = VoiceConfirmationGate()
+    /// Bumped for each phrase sent to a model, so a slow answer to an old one is dropped.
+    @ObservationIgnored private var understandGeneration = 0
     /// A question is with the strategist; one at a time.
     @ObservationIgnored private var isAsking = false
     @ObservationIgnored private var interruptionObserver: NSObjectProtocol?
@@ -227,42 +237,52 @@ final class VoiceCommandController {
             }
         case .unrecognized(let words):
             disarm()
-            if Self.understandsNaturalPhrasing {
-                interpretFreely(words, context: context)
-            } else {
-                reject(words)
-            }
+            understand(words, context: context)
         }
     }
 
-    private func reject(_ words: String) {
+    private func notUnderstood() {
         UINotificationFeedbackGenerator().notificationOccurred(.warning)
-        present(.said("I can't do \u{201C}\(words)\u{201D}. Say SmartWard, what can I say?"))
+        present(.answer("Sorry, I didn't get that."))
     }
 
-    /// Free wording the grammar didn't know: the on-device model picks the
-    /// phrase it means, and that phrase runs through the same parser and the
-    /// same confirmations as if you'd said it.
-    private func interpretFreely(_ words: String, context: VoiceContext) {
-        present(.silent("Working out what you meant…"))
+    /// Words the grammar doesn't know: a language model works out which of the
+    /// app's actions they mean, and they run through the same steps (and the
+    /// same confirmations) as if they'd been said in the grammar's words.
+    private func understand(_ words: String, context: VoiceContext) {
+        guard Self.understandsNaturalPhrasing else { return notUnderstood() }
+        understandGeneration += 1
+        let mine = understandGeneration
+        present(.silent("Thinking…"))
+        let readout = ArticleReadoutController.shared
+        let nowReading = (readout.currentArticle ?? (readout.isActive ? AppNavigation.shared.readerArticle : nil))?.title
         Task { @MainActor [weak self] in
-            let reply = await FoundationModelsVoiceRephraser().rephrase(words, context: context)
-            guard let self else { return }
-            let now = self.makeContext()
-            guard let reply, let command = VoiceRephrase.command(fromReply: reply, context: now) else {
-                self.reject(words)
-                return
-            }
+            let outcome = await VoiceIntentResolver.resolve(words, context: context, nowReading: nowReading,
+                                                             library: self?.library)
+            // Something newer was said meanwhile.
+            guard let self, mine == self.understandGeneration else { return }
+            guard case .actions(let commands)? = outcome, !commands.isEmpty else { return self.notUnderstood() }
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
             self.gate.cancel()
-            self.run(command, context: now)
+            self.runPlan(commands)
         }
+    }
+
+    /// Several actions in order ("go to Reading, show starred"). A change that
+    /// needs your yes stops the plan there and waits for it.
+    private func runPlan(_ commands: [VoiceCommand]) {
+        var last: Outcome?
+        for command in commands {
+            last = outcome(for: command, context: makeContext())
+            if command.needsConfirmation { break }
+        }
+        if let last { present(last) }
     }
 
     private static var understandsNaturalPhrasing: Bool {
         let defaults = UserDefaults.standard
         let wanted = defaults.object(forKey: naturalKey) == nil ? true : defaults.bool(forKey: naturalKey)
-        return wanted && FoundationModelsVoiceRephraser.isAvailable
+        return wanted && (VoiceIntentResolver.providerAvailable || VoiceIntentResolver.onDeviceAvailable)
     }
 
     private func arm() {
@@ -292,9 +312,10 @@ final class VoiceCommandController {
                             isBriefing: readout.isBriefing,
                             isProjectOpen: openProject != nil,
                             isConfirming: gate.isWaiting(now: Date()),
+                            isHandsFree: Self.isHandsFree,
                             isArmed: Date() < armedUntil,
                             spokenNow: readout.currentText,
-                            items: navigation.listedArticles.map(\.title),
+                            items: listed().map(\.title),
                             projects: projectNames())
     }
 
@@ -310,6 +331,38 @@ final class VoiceCommandController {
     private var library: ModelContext? {
         guard case .success(let container) = AppStore.container else { return nil }
         return container.mainContext
+    }
+
+    /// The articles "the first one" counts in: the list on screen (Reading, or
+    /// search results), or, before the Reading tab has been shown, your unread
+    /// articles in the Reading list's order.
+    private func listed() -> [Article] {
+        let navigation = AppNavigation.shared
+        if !navigation.listedArticles.isEmpty { return navigation.listedArticles }
+        guard let library else { return [] }
+        let unread = (try? library.fetch(FetchDescriptor<Article>(predicate: #Predicate { $0.isRead == false }))) ?? []
+        let reading = unread.filter { $0.stage != .triagedOut && $0.source?.sourceKind != .githubRepo }
+        let order = ReadingOrder(rawValue: UserDefaults.standard.string(forKey: ReadingOrder.storageKey) ?? "") ?? .newest
+        switch order {
+        case .newest: return reading.sorted { ($0.publishedAt ?? $0.ingestedAt) > ($1.publishedAt ?? $1.ingestedAt) }
+        case .relevant: return reading.sorted { $0.relevance > $1.relevance }
+        }
+    }
+
+    /// The listed article best matching `words`.
+    private func article(about words: String) -> Article? {
+        let list = listed()
+        return VoiceItemMatcher.best(words, in: list.map(\.title)).map { list[$0] }
+    }
+
+    /// Opens `article` and reads it aloud (or its summary).
+    private func read(_ article: Article, summaryOnly: Bool) -> Outcome {
+        let navigation = AppNavigation.shared
+        // Already open: pushing it again could replace the screen, whose exit stops this reading.
+        if navigation.readerArticle?.id != article.id { navigation.openArticle(article) }
+        ArticleReadoutController.shared.start(article, scope: summaryOnly ? .summaryOnly : .whole,
+                                              sourceName: article.sourceLabel)
+        return .silent(summaryOnly ? "Reading the summary of \(article.title)" : "Reading \(article.title)")
     }
 
     private func projectNames() -> [String] {
@@ -507,27 +560,29 @@ final class VoiceCommandController {
             return .said(command.confirmation)
 
         case .openItem(let number):
-            guard navigation.tab == .reading else { return .said("Open Reading first, then say a number.") }
-            guard navigation.listedArticles.indices.contains(number - 1) else {
-                return .said("There's no number \(number) in this list.")
-            }
-            navigation.openArticle(navigation.listedArticles[number - 1])
+            let list = listed()
+            guard list.indices.contains(number - 1) else { return .said("There's no number \(number) in the list.") }
+            navigation.openArticle(list[number - 1])
             return .said(command.confirmation)
 
         case .openLastItem:
-            guard navigation.tab == .reading, let last = navigation.listedArticles.last else {
-                return .said("There's no list to pick from. Open Reading first.")
-            }
+            guard let last = listed().last else { return .said("There are no articles to pick from.") }
             navigation.openArticle(last)
             return .said(command.confirmation)
 
         case .openMatching(let words):
-            let titles = navigation.listedArticles.map(\.title)
-            guard let index = VoiceItemMatcher.best(words, in: titles) else {
-                return .said("I couldn't find an article about \(words).")
-            }
-            navigation.openArticle(navigation.listedArticles[index])
-            return .said("Opening \(titles[index])")
+            guard let article = article(about: words) else { return .said("I couldn't find an article about \(words).") }
+            navigation.openArticle(article)
+            return .said("Opening \(article.title)")
+
+        case .readItem(let number, let summaryOnly):
+            let list = listed()
+            guard list.indices.contains(number - 1) else { return .said("There's no number \(number) in the list.") }
+            return read(list[number - 1], summaryOnly: summaryOnly)
+
+        case .readMatching(let words, let summaryOnly):
+            guard let article = article(about: words) else { return .said("I couldn't find an article about \(words).") }
+            return read(article, summaryOnly: summaryOnly)
 
         case .openProject(let name):
             guard let library else { return .said("I couldn't open your library.") }
