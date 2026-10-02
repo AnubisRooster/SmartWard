@@ -192,6 +192,26 @@ public final class PipelineRunner {
         return backlog
     }
 
+    /// Gives articles and chat turns that were left out of the graph after
+    /// failing another chance (after a fix, or a change of model).
+    /// - Returns: how many articles get another chance.
+    @discardableResult
+    public static func retryLeftOut(context: ModelContext) throws -> Int {
+        let raw = ArticleStage.embedded.rawValue
+        let limit = GraphIndexer.maxGraphAttempts
+        let articles = try context.fetch(FetchDescriptor<Article>(predicate: #Predicate {
+            $0.stageRaw == raw && $0.graphAttempts >= limit
+        }))
+        for article in articles { article.graphAttempts = 0 }
+        for turn in try context.fetch(FetchDescriptor<Message>(predicate: #Predicate {
+            $0.indexedAt == nil && $0.graphAttempts >= limit
+        })) {
+            turn.graphAttempts = 0
+        }
+        try context.save()
+        return articles.count
+    }
+
     /// Steps (one per article moved on, or turn indexed) an article at
     /// `stage` still needs: triage, embedding, and linking when extraction is on.
     static func steps(from stage: ArticleStage, includesLinking: Bool) -> Int {

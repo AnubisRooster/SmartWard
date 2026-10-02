@@ -64,6 +64,12 @@ struct IndexingDetailsView: View {
                 LabeledContent("Not yet searchable", value: "\(pipeline.backlog.notSearchable)")
                 LabeledContent("Waiting for the knowledge graph", value: "\(pipeline.backlog.graphPending)")
                 LabeledContent("Left out of the graph", value: "\(pipeline.backlog.graphSkipped)")
+                if pipeline.backlog.graphSkipped > 0 {
+                    Button("Try left-out articles again", systemImage: "arrow.clockwise") {
+                        _ = try? PipelineRunner.retryLeftOut(context: context)
+                        pipeline.refreshWaiting(context: context)
+                    }
+                }
             }
 
             Section {

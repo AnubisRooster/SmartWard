@@ -112,6 +112,27 @@ final class ExtractionTests: XCTestCase {
             _ = try await broken.extract("x")
             XCTFail("expected a decoding error")
         } catch {}
+        XCTAssertTrue(request.messages.first?.text.contains(#"{"entities":[{"name":"#) ?? false,
+                      "the JSON shape is spelled out for models that ignore the response format")
+    }
+
+    func testRepliesThatIgnoreTheFormatAreReadLeniently() throws {
+        let prose = #"Here is the knowledge graph: {"entities":[{"name":"vLLM","type":"tool"}],"relations":[]} Hope this helps!"#
+        XCTAssertEqual(try BYOKExtractor.decode(prose).entities, [.init(name: "vLLM", type: "tool")])
+
+        let names = #"{"entities":["vLLM", {"name":"Llama 3","type":"model"}, 7, {"type":"tool"}]}"#
+        let graph = try BYOKExtractor.decode(names)
+        XCTAssertEqual(graph.entities, [.init(name: "vLLM", type: "concept"), .init(name: "Llama 3", type: "model")])
+        XCTAssertEqual(graph.relations, [], "no relations is fine")
+
+        let relations = #"{"entities":[{"name":"vLLM","type":"tool"}],"relations":["vLLM uses Llama 3", {"source":"vLLM","target":"Llama 3"}]}"#
+        XCTAssertEqual(try BYOKExtractor.decode(relations).relations,
+                       [.init(source: "vLLM", target: "Llama 3", type: "RELATES_TO")])
+
+        for bad in [#"{"entities":[{"name":"vLLM","type":"to"#, "Understood. I will extract the entities.",
+                    #"{"nodes":[]}"#] {
+            XCTAssertThrowsError(try BYOKExtractor.decode(bad), bad)
+        }
     }
 }
 
@@ -700,6 +721,30 @@ final class GraphIndexingTests: XCTestCase {
                        PipelineRunner.Backlog(notSearchable: 3))
     }
 
+    @MainActor
+    func testLeftOutArticlesAndTurnsCanBeTriedAgain() throws {
+        let container = try KnowledgeSchema.makeContainer(inMemory: true)
+        let context = container.mainContext
+        let leftOut = Article(canonicalURL: "a", title: "a")
+        leftOut.stage = .embedded
+        leftOut.graphAttempts = GraphIndexer.maxGraphAttempts
+        let trying = Article(canonicalURL: "b", title: "b")
+        trying.stage = .embedded
+        trying.graphAttempts = 1
+        context.insert(leftOut)
+        context.insert(trying)
+        let turn = Message(role: "user", content: "x")
+        turn.graphAttempts = GraphIndexer.maxGraphAttempts
+        context.insert(turn)
+        try context.save()
+
+        XCTAssertEqual(try PipelineRunner.retryLeftOut(context: context), 1)
+        XCTAssertEqual(leftOut.graphAttempts, 0)
+        XCTAssertEqual(trying.graphAttempts, 1, "only the left-out ones")
+        XCTAssertEqual(turn.graphAttempts, 0)
+        XCTAssertEqual(try PipelineRunner.backlog(context: context, includesLinking: true).graphSkipped, 0)
+    }
+
     func testBatchesGroupTextsUpToALength() {
         XCTAssertEqual(GraphIndexer.batches(lengths: [400, 400, 400, 900, 100], maxCharacters: 1_000),
                        [[0, 1], [2], [3, 4]])
@@ -729,6 +774,25 @@ final class ExtractionTextTests: XCTestCase {
             .init(source: "vLLM", target: "Speculative decoding", type: "USES"),
             .init(source: "Speculative decoding", target: "Llama 3", type: "EVALUATED_ON"),
         ], "incomplete lines and relations to unknown entities are dropped")
+    }
+
+    func testLinesWithoutTheirLabelsStillCount() throws {
+        let reply = """
+        Entities:
+        - vLLM | tool
+        Speculative decoding (technique)
+        Llama 3 | model
+        A sentence (with an aside)
+        Relations:
+        vLLM | uses | Speculative decoding
+        vLLM | runs on | Llama 3
+        """
+        let graph = try XCTUnwrap(ExtractionText.parse(reply))
+        XCTAssertEqual(graph.entities, [.init(name: "vLLM", type: "tool"),
+                                        .init(name: "Speculative decoding", type: "technique"),
+                                        .init(name: "Llama 3", type: "model")])
+        XCTAssertEqual(graph.relations, [.init(source: "vLLM", target: "Speculative decoding", type: "USES")],
+                       "an unknown relation type without a label isn't a relation line")
     }
 
     func testARefusalIsNoGraph() {

@@ -149,7 +149,7 @@ public enum ExtractionText {
     RELATION: source name | RELATION_TYPE | target name
     type is one of: \(ExtractedGraph.entityTypes.joined(separator: ", ")).
     RELATION_TYPE is one of: \(ExtractedGraph.relationTypes.joined(separator: ", ")).
-    List at most 15 entities and 15 relations.
+    List at most 15 entities and 15 relations, then stop.
     """
 
     /// The graph in a plain-text answer, sanitized; `nil` when it has no
@@ -177,6 +177,25 @@ public enum ExtractionText {
                 let fields = parts(String(line.dropFirst("RELATION:".count)))
                 guard fields.count >= 3 else { continue }
                 relations.append(.init(source: fields[0], target: fields[2], type: fields[1]))
+            } else if line.contains("|") {
+                // The format without its labels: "name | type", "source | TYPE | target".
+                let fields = parts(line)
+                let relationType = fields.count >= 3
+                    ? fields[1].uppercased().replacingOccurrences(of: " ", with: "_") : ""
+                if fields.count == 2, !fields[0].isEmpty,
+                   ExtractedGraph.entityTypes.contains(fields[1].lowercased()) {
+                    entities.append(.init(name: fields[0], type: fields[1]))
+                } else if ExtractedGraph.relationTypes.contains(relationType) {
+                    relations.append(.init(source: fields[0], target: fields[2], type: relationType))
+                }
+            } else if line.hasSuffix(")"), let open = line.lastIndex(of: "(") {
+                // "vLLM (tool)".
+                let name = line[..<open].trimmingCharacters(in: .whitespaces)
+                let type = line[line.index(after: open)..<line.index(before: line.endIndex)]
+                    .trimmingCharacters(in: .whitespaces).lowercased()
+                if !name.isEmpty, ExtractedGraph.entityTypes.contains(type) {
+                    entities.append(.init(name: name, type: type))
+                }
             }
         }
         let graph = ExtractedGraph(entities: entities, relations: relations).sanitized()
@@ -199,6 +218,16 @@ public enum ExtractionPrompt {
     public static func user(_ text: String) -> String {
         "<document>\n\(UntrustedText.body(text, tag: "document"))\n</document>"
     }
+
+    /// Spelled out for models that ignore the requested response format
+    /// (many free ones do).
+    public static let jsonInstructions = """
+    Answer with only this JSON object and nothing else, no prose and no code fences:
+    {"entities":[{"name":"...","type":"..."}],"relations":[{"source":"...","target":"...","type":"..."}]}
+    Entity types: \(ExtractedGraph.entityTypes.joined(separator: ", ")).
+    Relation types: \(ExtractedGraph.relationTypes.joined(separator: ", ")).
+    List at most 25 entities and 30 relations.
+    """
 
     /// Strict-mode JSON Schema (every property required, no extras).
     public static var schema: JSONValue {
@@ -251,7 +280,8 @@ public struct BYOKExtractor: EntityExtracting {
     public func request(for text: String) -> LLMRequest {
         LLMRequest(provider: provider,
                    model: model,
-                   messages: [.system(ExtractionPrompt.instructions), .user(ExtractionPrompt.user(text))],
+                   messages: [.system(ExtractionPrompt.instructions + "\n" + ExtractionPrompt.jsonInstructions),
+                              .user(ExtractionPrompt.user(text))],
                    responseFormat: .jsonSchema(name: "knowledge_graph", schema: ExtractionPrompt.schema),
                    // Room for models that think before answering (their
                    // reasoning counts against this); no temperature, which
@@ -266,7 +296,11 @@ public struct BYOKExtractor: EntityExtracting {
                                 provider: provider.rawValue, model: response.model ?? model)
     }
 
-    /// Decodes the reply, tolerating Markdown code fences.
+    /// Decodes the reply leniently, since many models (free ones especially)
+    /// ignore the requested format: the JSON object may be wrapped in code
+    /// fences or prose, entities may be plain names, and relations that don't
+    /// fit are dropped rather than failing the whole article. A reply with
+    /// no JSON object in it still fails, so the next extractor gets a turn.
     static func decode(_ text: String) throws -> ExtractedGraph {
         var trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.hasPrefix("```") {
@@ -277,10 +311,29 @@ public struct BYOKExtractor: EntityExtracting {
                 trimmed = String(trimmed[..<fence.lowerBound])
             }
         }
-        do {
-            return try JSONDecoder().decode(ExtractedGraph.self, from: Data(trimmed.utf8))
-        } catch {
-            throw LLMCompletionError.invalidStructuredOutput("\(error)")
+        // "Here is the graph: {...}"
+        if let open = trimmed.firstIndex(of: "{"), let close = trimmed.lastIndex(of: "}"), open < close {
+            trimmed = String(trimmed[open...close])
         }
+        guard let object = (try? JSONSerialization.jsonObject(with: Data(trimmed.utf8))) as? [String: Any],
+              let rawEntities = object["entities"] as? [Any] else {
+            throw LLMCompletionError.invalidStructuredOutput(
+                "The reply wasn't the JSON object asked for (prose, another shape, or cut off).")
+        }
+        var entities: [ExtractedGraph.Entity] = []
+        for item in rawEntities {
+            if let name = item as? String {
+                entities.append(.init(name: name, type: "concept"))
+            } else if let fields = item as? [String: Any], let name = fields["name"] as? String {
+                entities.append(.init(name: name, type: fields["type"] as? String ?? "concept"))
+            }
+        }
+        var relations: [ExtractedGraph.Relation] = []
+        for item in object["relations"] as? [Any] ?? [] {
+            guard let fields = item as? [String: Any], let source = fields["source"] as? String,
+                  let target = fields["target"] as? String else { continue }
+            relations.append(.init(source: source, target: target, type: fields["type"] as? String ?? "RELATES_TO"))
+        }
+        return ExtractedGraph(entities: entities, relations: relations)
     }
 }

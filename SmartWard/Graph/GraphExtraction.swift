@@ -12,20 +12,36 @@ import StrategistCore
 /// tier that ever sees private-repo content or off-the-record chats.
 struct FoundationModelsEntityExtractor: EntityExtracting {
     let tier = ExtractionTier.onDevice
-    /// Leaves room in the 4,096-token window for instructions and output.
-    let maxInputCharacters = 4_000
+    /// Leaves room in the 4,096-token window for instructions and the answer,
+    /// even for dense text (code, tables, links) that takes more tokens per character.
+    let maxInputCharacters = 3_000
+    /// The list asked for fits well within this; without a limit the model
+    /// could keep listing until it ran out of room and failed.
+    static let maxResponseTokens = 700
 
     /// Plain text with Apple's relaxed guardrails (meant for transforming text
     /// you were given): the default ones, which apply to guided generation,
     /// turn down plenty of harmless articles as "unsafe", and every refusal
-    /// used to leave an article retried forever.
+    /// used to leave an article retried forever. Text that still doesn't fit
+    /// the window is tried again with its first half.
     func extract(_ text: String) async throws -> ExtractionOutput {
+        do {
+            return try await extract(text, limit: maxInputCharacters)
+        } catch let error as LanguageModelSession.GenerationError {
+            guard case .exceededContextWindowSize = error else { throw error }
+            return try await extract(text, limit: maxInputCharacters / 2)
+        }
+    }
+
+    private func extract(_ text: String, limit: Int) async throws -> ExtractionOutput {
         let model = SystemLanguageModel(useCase: .general, guardrails: .permissiveContentTransformations)
         let session = LanguageModelSession(model: model, instructions: ExtractionText.instructions)
-        let prompt = ExtractionPrompt.user(String(text.prefix(maxInputCharacters)))
+        let prompt = ExtractionPrompt.user(String(text.prefix(limit)))
+        var options = GenerationOptions()
+        options.maximumResponseTokens = Self.maxResponseTokens
         let reply: String
         do {
-            reply = try await session.respond(to: prompt).content
+            reply = try await session.respond(to: prompt, options: options).content
         } catch let error as LanguageModelSession.GenerationError {
             switch error {
             // Not this article's fault: try it again on a later run.
