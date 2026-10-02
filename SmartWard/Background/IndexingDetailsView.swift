@@ -46,6 +46,14 @@ struct IndexingDetailsView: View {
         return "\(spent) of \(cap.formatted(.currency(code: "USD"))) today"
     }
 
+    /// Until when your provider is paused, and why, while it is.
+    private var pauseLine: String? {
+        let pause = pipeline.providerPause
+        guard pause.isActive(now: Date()), let until = pause.until else { return nil }
+        let reason = pause.reason.map { ": \($0)" } ?? ""
+        return "Paused until \(until.formatted(date: .omitted, time: .shortened))\(reason)"
+    }
+
     private static func seconds(_ value: Double?) -> String {
         value.map { String(format: "%.1f s per call", $0) } ?? "no calls yet"
     }
@@ -56,12 +64,23 @@ struct IndexingDetailsView: View {
                 LabeledContent("Not yet searchable", value: "\(pipeline.backlog.notSearchable)")
                 LabeledContent("Waiting for the knowledge graph", value: "\(pipeline.backlog.graphPending)")
                 LabeledContent("Left out of the graph", value: "\(pipeline.backlog.graphSkipped)")
+                if pipeline.backlog.graphSkipped > 0 {
+                    Button("Try left-out articles again", systemImage: "arrow.clockwise") {
+                        _ = try? PipelineRunner.retryLeftOut(context: context)
+                        pipeline.refreshWaiting(context: context)
+                    }
+                }
             }
 
             Section {
                 LabeledContent("Provider for the graph", value: providerLine)
                 LabeledContent("Apple Intelligence", value: onDeviceLine)
                 LabeledContent("Spend", value: budgetLine)
+                if let pauseLine {
+                    Label("Your provider is skipped for a while after rate limits, timeouts or repeated failures, so Apple Intelligence takes the articles. \(pauseLine)",
+                          systemImage: "pause.circle")
+                        .foregroundStyle(.orange)
+                }
                 if graph.budgetPaused {
                     Label("Today's budget is spent, so your provider is paused and only Apple Intelligence is extracting.",
                           systemImage: "pause.circle")
@@ -81,6 +100,9 @@ struct IndexingDetailsView: View {
                 LabeledContent("On-device failures", value: "\(graph.onDeviceFailures)")
                 LabeledContent("On-device speed", value: Self.seconds(graph.onDeviceSecondsPerCall))
                 LabeledContent("No extractor allowed", value: "\(graph.unavailable)")
+                LabeledContent("Retried later (temporary errors)", value: "\(graph.deferred)")
+                LabeledContent("Chat turns added", value: "\(graph.turnsLinked)")
+                LabeledContent("Chat turns failed", value: "\(graph.turnsFailed)")
                 LabeledContent("Runs", value: "\(pipeline.runsThisSession)")
                 if let at = pipeline.lastRunAt {
                     LabeledContent("Last run") {
@@ -129,10 +151,12 @@ struct IndexingDetailsView: View {
             "Provider: \(providerLine)",
             "Apple Intelligence: \(onDeviceLine)",
             "Spend: \(budgetLine)\(graph.budgetPaused ? " (provider paused: budget spent)" : "")",
+            "Provider pause: \(pauseLine ?? (graph.providerPaused ? "was paused this session" : "none"))",
             "Indexing while open: \(pipeline.isIndexingWhileOpen ? "on" : "off"), running now: \(pipeline.isRunning ? "yes" : "no")",
             "Provider: \(graph.providerLinked) added, \(graph.providerFailures) failed, \(Self.seconds(graph.providerSecondsPerCall))",
             "On device: \(graph.onDeviceLinked) added, \(graph.onDeviceFailures) failed, \(Self.seconds(graph.onDeviceSecondsPerCall))",
-            "No extractor allowed: \(graph.unavailable)",
+            "No extractor allowed: \(graph.unavailable), retried later: \(graph.deferred)",
+            "Chat turns: \(graph.turnsLinked) added, \(graph.turnsFailed) failed",
             "Runs: \(pipeline.runsThisSession), last \(Int(pipeline.lastRunSeconds)) s",
         ]
         if let summary = UserDefaults.standard.string(forKey: BackgroundWork.lastRunKey) { lines.append("Last background run: \(summary)") }

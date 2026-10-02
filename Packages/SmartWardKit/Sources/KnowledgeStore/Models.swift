@@ -351,6 +351,10 @@ public final class Message {
     public var createdAt: Date = Date()
     /// When this turn was chunked, embedded and added to the graph; `nil` until then.
     public var indexedAt: Date?
+    /// Runs in which every allowed extractor failed on this turn (temporary
+    /// failures aren't counted). After `GraphIndexer.maxGraphAttempts` it's
+    /// no longer tried, so a turn no model can read doesn't hold up indexing.
+    public var graphAttempts: Int = 0
     /// For assistant turns: the library passages it was given, as JSON
     /// (ids, titles and why each was retrieved), shown as its sources.
     public var referencesJSON: String?

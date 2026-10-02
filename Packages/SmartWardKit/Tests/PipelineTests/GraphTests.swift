@@ -38,6 +38,18 @@ final class FakeExtractor: EntityExtracting, @unchecked Sendable {
     }
 }
 
+/// A provider that takes `seconds` to answer (or until cancelled).
+struct SlowExtractor: EntityExtracting {
+    let tier = ExtractionTier.byok
+    let maxInputCharacters = 10_000
+    var seconds: Double = 5
+
+    func extract(_ text: String) async throws -> ExtractionOutput {
+        try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+        return ExtractionOutput(graph: ExtractedGraph())
+    }
+}
+
 /// Answers every completion with the same text.
 struct FakeCompletion: LLMCompleting {
     let text: String
@@ -87,6 +99,8 @@ final class ExtractionTests: XCTestCase {
         } else {
             XCTFail("expected a JSON schema response format")
         }
+        XCTAssertNil(request.temperature, "reasoning models reject anything but their default")
+        XCTAssertEqual(request.maxTokens, 4_096, "room for models that think first")
 
         let output = try await extractor.extract("vLLM is fast.")
         XCTAssertEqual(output.graph.entities, [.init(name: "vLLM", type: "tool")])
@@ -98,6 +112,27 @@ final class ExtractionTests: XCTestCase {
             _ = try await broken.extract("x")
             XCTFail("expected a decoding error")
         } catch {}
+        XCTAssertTrue(request.messages.first?.text.contains(#"{"entities":[{"name":"#) ?? false,
+                      "the JSON shape is spelled out for models that ignore the response format")
+    }
+
+    func testRepliesThatIgnoreTheFormatAreReadLeniently() throws {
+        let prose = #"Here is the knowledge graph: {"entities":[{"name":"vLLM","type":"tool"}],"relations":[]} Hope this helps!"#
+        XCTAssertEqual(try BYOKExtractor.decode(prose).entities, [.init(name: "vLLM", type: "tool")])
+
+        let names = #"{"entities":["vLLM", {"name":"Llama 3","type":"model"}, 7, {"type":"tool"}]}"#
+        let graph = try BYOKExtractor.decode(names)
+        XCTAssertEqual(graph.entities, [.init(name: "vLLM", type: "concept"), .init(name: "Llama 3", type: "model")])
+        XCTAssertEqual(graph.relations, [], "no relations is fine")
+
+        let relations = #"{"entities":[{"name":"vLLM","type":"tool"}],"relations":["vLLM uses Llama 3", {"source":"vLLM","target":"Llama 3"}]}"#
+        XCTAssertEqual(try BYOKExtractor.decode(relations).relations,
+                       [.init(source: "vLLM", target: "Llama 3", type: "RELATES_TO")])
+
+        for bad in [#"{"entities":[{"name":"vLLM","type":"to"#, "Understood. I will extract the entities.",
+                    #"{"nodes":[]}"#] {
+            XCTAssertThrowsError(try BYOKExtractor.decode(bad), bad)
+        }
     }
 }
 
@@ -314,7 +349,7 @@ final class GraphIndexingTests: XCTestCase {
         try context.save()
 
         let failing = FakeExtractor(tier: .onDevice)
-        failing.error = URLError(.timedOut)
+        failing.error = URLError(.cannotParseResponse)
         let runner = PipelineRunner(embedder: fakeModel, fullText: nil,
                                     extraction: ExtractionTiers(onDevice: failing), now: { self.now })
         let report = try await runner.run(context: context, until: now + 60)
@@ -323,6 +358,172 @@ final class GraphIndexingTests: XCTestCase {
         XCTAssertEqual(failing.inputs.count, 1, "tried once per run, not in a loop")
         XCTAssertEqual(article.graphAttempts, 1)
         XCTAssertEqual(report.remaining, 1, "one more try next run")
+    }
+
+    @MainActor
+    func testATemporaryFailureIsTriedAgainWithoutCountingAgainstTheArticle() async throws {
+        let container = try KnowledgeSchema.makeContainer(inMemory: true)
+        let context = container.mainContext
+        let article = await embeddedArticle("https://x.example/1", context: context)
+        article.stage = .embedded
+        try context.save()
+
+        let busy = FakeExtractor(tier: .onDevice)
+        busy.error = ExtractionBusy("Apple Intelligence is rate-limited in the background")
+        let runner = PipelineRunner(embedder: fakeModel, fullText: nil,
+                                    extraction: ExtractionTiers(onDevice: busy), now: { self.now })
+        for _ in 0..<3 {
+            let report = try await runner.run(context: context, until: now + 60)
+            XCTAssertEqual(report.graph.deferred, 1)
+            XCTAssertEqual(report.remaining, 1, "still waiting, not left out")
+        }
+        XCTAssertEqual(busy.inputs.count, 3, "once per run")
+        XCTAssertEqual(article.graphAttempts, 0)
+    }
+
+    @MainActor
+    func testARateLimitedProviderIsPausedSoArticlesGoStraightToTheDevice() async throws {
+        let container = try KnowledgeSchema.makeContainer(inMemory: true)
+        let context = container.mainContext
+        for index in 0..<5 {
+            let article = await embeddedArticle("https://x.example/\(index)", context: context)
+            article.stage = .embedded
+            article.ingestedAt = now - Double(index)
+        }
+        try context.save()
+
+        let byok = FakeExtractor(tier: .byok)
+        byok.error = LLMCompletionError.http(status: 429, body: "free-models-per-day limit reached")
+        let onDevice = FakeExtractor(tier: .onDevice, graph: agentsGraph)
+        let pause = ProviderPause()
+        let runner = PipelineRunner(embedder: fakeModel, fullText: nil,
+                                    extraction: ExtractionTiers(onDevice: onDevice, byok: byok),
+                                    providerPause: pause, now: { self.now })
+        let report = try await runner.run(context: context, until: now + 60)
+        XCTAssertEqual(report.linked, 5)
+        XCTAssertEqual(report.graph.onDeviceLinked, 5)
+        XCTAssertEqual(byok.inputs.count, 3, "only the first batch waited on the provider")
+        XCTAssertEqual(onDevice.inputs.count, 5)
+        XCTAssertTrue(report.graph.providerPaused)
+        XCTAssertTrue(pause.isActive(now: now))
+        XCTAssertTrue(pause.reason?.contains("429") ?? false)
+        XCTAssertFalse(pause.isActive(now: now + ProviderPause.cooldown), "it's tried again later")
+
+        // The next run (the pause outlives it) doesn't try the provider either.
+        let more = await embeddedArticle("https://x.example/more", context: context)
+        more.stage = .embedded
+        try context.save()
+        _ = try await runner.run(context: context, until: now + 60)
+        XCTAssertEqual(more.stage, .linked)
+        XCTAssertEqual(byok.inputs.count, 3)
+    }
+
+    @MainActor
+    func testTheProviderIsPausedAfterAFewFailuresInARow() {
+        let pause = ProviderPause()
+        pause.note(failed: "HTTP 400: response_format not supported", transient: false, now: now)
+        pause.note(failed: "HTTP 400: response_format not supported", transient: false, now: now)
+        XCTAssertFalse(pause.isActive(now: now))
+        pause.note(failed: nil, transient: false, now: now)
+        pause.note(failed: "Structured output didn't match", transient: false, now: now)
+        pause.note(failed: "Structured output didn't match", transient: false, now: now)
+        XCTAssertFalse(pause.isActive(now: now), "an answer in between starts the count again")
+        pause.note(failed: "Structured output didn't match", transient: false, now: now)
+        XCTAssertTrue(pause.isActive(now: now))
+        XCTAssertEqual(pause.reason, "Structured output didn't match")
+
+        let limited = ProviderPause()
+        limited.note(failed: "HTTP 429: rate limited", transient: true, now: now)
+        XCTAssertTrue(limited.isActive(now: now + 60), "a rate limit pauses it right away")
+    }
+
+    @MainActor
+    func testASlowProviderTimesOutAndTheDeviceTakesOver() async throws {
+        let container = try KnowledgeSchema.makeContainer(inMemory: true)
+        let context = container.mainContext
+        let article = await embeddedArticle("https://x.example/1", context: context)
+        article.stage = .embedded
+        try context.save()
+
+        let onDevice = FakeExtractor(tier: .onDevice, graph: agentsGraph)
+        let indexer = try GraphIndexer(context: context, embedder: fakeModel,
+                                       tiers: ExtractionTiers(onDevice: onDevice, byok: SlowExtractor()),
+                                       now: { self.now })
+        indexer.providerTimeout = 0.05
+        let started = Date()
+        let outcomes = await indexer.index([article], links: [:])
+        XCTAssertLessThan(Date().timeIntervalSince(started), 3, "didn't wait for the slow provider")
+        guard case .linked? = outcomes[article.id] else { return XCTFail("expected a link, got \(String(describing: outcomes[article.id]))") }
+        XCTAssertEqual(indexer.stats.onDeviceLinked, 1)
+        XCTAssertTrue(indexer.stats.errors.first?.hasPrefix("Provider: No answer within") ?? false)
+        XCTAssertTrue(indexer.providerPause.isActive(now: now), "a timeout pauses the provider")
+    }
+
+    func testWhichFailuresAreTemporary() async throws {
+        XCTAssertTrue(GraphIndexer.isTransient(LLMCompletionError.http(status: 429, body: "")))
+        XCTAssertTrue(GraphIndexer.isTransient(LLMCompletionError.http(status: 503, body: "")))
+        XCTAssertFalse(GraphIndexer.isTransient(LLMCompletionError.http(status: 400, body: "")))
+        XCTAssertFalse(GraphIndexer.isTransient(LLMCompletionError.invalidStructuredOutput("prose")))
+        XCTAssertTrue(GraphIndexer.isTransient(URLError(.timedOut)))
+        XCTAssertTrue(GraphIndexer.isTransient(URLError(.notConnectedToInternet)))
+        XCTAssertFalse(GraphIndexer.isTransient(URLError(.cannotParseResponse)))
+        XCTAssertTrue(GraphIndexer.isTransient(ExtractionTimedOut(seconds: 45)))
+        XCTAssertTrue(GraphIndexer.isTransient(ExtractionBusy("busy")))
+        XCTAssertFalse(GraphIndexer.isTransient(GraphIndexError.extractionFailed))
+
+        let quick = try await GraphIndexer.withTimeout(5) { 42 }
+        XCTAssertEqual(quick, 42)
+    }
+
+    @MainActor
+    func testTurnsFallBackToTheDeviceAndDontHoldUpArticles() async throws {
+        let container = try KnowledgeSchema.makeContainer(inMemory: true)
+        let context = container.mainContext
+        let article = await embeddedArticle("https://x.example/1", context: context)
+        article.stage = .embedded
+        let conversation = Conversation(title: "Serving plan")
+        context.insert(conversation)
+        let readable = Message(role: "user", content: "Should we adopt vLLM with speculative decoding for Llama 3?")
+        readable.createdAt = now - 120
+        conversation.messages?.append(readable)
+        try context.save()
+
+        // Your provider can't read anything; the device model can.
+        let byok = FakeExtractor(tier: .byok)
+        byok.error = LLMCompletionError.invalidStructuredOutput("prose instead of JSON")
+        let onDevice = FakeExtractor(tier: .onDevice, graph: agentsGraph)
+        let runner = PipelineRunner(embedder: fakeModel, fullText: nil, strength: .off,
+                                    extraction: ExtractionTiers(onDevice: onDevice, byok: byok), now: { self.now })
+        let report = try await runner.run(context: context, until: now + 60)
+        XCTAssertEqual(report.turnsIndexed, 1)
+        XCTAssertEqual(report.graph.turnsLinked, 1)
+        XCTAssertNotNil(readable.indexedAt)
+        XCTAssertEqual(report.linked, 1)
+        XCTAssertEqual(article.stage, .linked)
+    }
+
+    @MainActor
+    func testATurnNoModelCanReadIsLeftOutAfterRepeatedFailures() async throws {
+        let container = try KnowledgeSchema.makeContainer(inMemory: true)
+        let context = container.mainContext
+        let conversation = Conversation(title: "Serving plan")
+        context.insert(conversation)
+        let turn = Message(role: "user", content: "Should we adopt vLLM with speculative decoding for Llama 3?")
+        turn.createdAt = now - 120
+        conversation.messages?.append(turn)
+        try context.save()
+
+        let byok = FakeExtractor(tier: .byok)
+        byok.error = LLMCompletionError.http(status: 400, body: "bad request")
+        let onDevice = FakeExtractor(tier: .onDevice)
+        onDevice.error = URLError(.cannotParseResponse)
+        let runner = PipelineRunner(embedder: fakeModel, fullText: nil, strength: .off,
+                                    extraction: ExtractionTiers(onDevice: onDevice, byok: byok), now: { self.now })
+        for _ in 0..<3 { _ = try await runner.run(context: context, until: now + 60) }
+        XCTAssertEqual(turn.graphAttempts, GraphIndexer.maxGraphAttempts)
+        XCTAssertNil(turn.indexedAt)
+        XCTAssertEqual(byok.inputs.count, 2, "not tried a third time")
+        XCTAssertEqual(onDevice.inputs.count, 2)
     }
 
     @MainActor
@@ -400,12 +601,26 @@ final class GraphIndexingTests: XCTestCase {
         XCTAssertEqual(session.errors, ["Provider: HTTP 429: rate limited", "Provider: HTTP 400: bad model"],
                        "no repeats, newest first")
 
+        var paused = GraphRunStats()
+        paused.providerPaused = true
+        paused.deferred = 2
+        paused.turnsLinked = 1
+        paused.turnsFailed = 1
+        session.merge(paused)
+        XCTAssertTrue(session.providerPaused)
+        XCTAssertEqual(session.deferred, 2)
+        XCTAssertEqual(session.turnsLinked, 1)
+        XCTAssertEqual(session.turnsFailed, 1)
+        session.budgetPaused = true
+
         session.merge(GraphRunStats())
         XCTAssertTrue(session.budgetPaused, "a run that did nothing doesn't clear it")
+        XCTAssertTrue(session.providerPaused)
         var working = GraphRunStats()
         working.providerLinked = 1
         session.merge(working)
         XCTAssertFalse(session.budgetPaused, "a run that used the provider does")
+        XCTAssertFalse(session.providerPaused)
 
         var many = GraphRunStats()
         for index in 0..<20 { many.noteError("error \(index)") }
@@ -506,6 +721,30 @@ final class GraphIndexingTests: XCTestCase {
                        PipelineRunner.Backlog(notSearchable: 3))
     }
 
+    @MainActor
+    func testLeftOutArticlesAndTurnsCanBeTriedAgain() throws {
+        let container = try KnowledgeSchema.makeContainer(inMemory: true)
+        let context = container.mainContext
+        let leftOut = Article(canonicalURL: "a", title: "a")
+        leftOut.stage = .embedded
+        leftOut.graphAttempts = GraphIndexer.maxGraphAttempts
+        let trying = Article(canonicalURL: "b", title: "b")
+        trying.stage = .embedded
+        trying.graphAttempts = 1
+        context.insert(leftOut)
+        context.insert(trying)
+        let turn = Message(role: "user", content: "x")
+        turn.graphAttempts = GraphIndexer.maxGraphAttempts
+        context.insert(turn)
+        try context.save()
+
+        XCTAssertEqual(try PipelineRunner.retryLeftOut(context: context), 1)
+        XCTAssertEqual(leftOut.graphAttempts, 0)
+        XCTAssertEqual(trying.graphAttempts, 1, "only the left-out ones")
+        XCTAssertEqual(turn.graphAttempts, 0)
+        XCTAssertEqual(try PipelineRunner.backlog(context: context, includesLinking: true).graphSkipped, 0)
+    }
+
     func testBatchesGroupTextsUpToALength() {
         XCTAssertEqual(GraphIndexer.batches(lengths: [400, 400, 400, 900, 100], maxCharacters: 1_000),
                        [[0, 1], [2], [3, 4]])
@@ -535,6 +774,25 @@ final class ExtractionTextTests: XCTestCase {
             .init(source: "vLLM", target: "Speculative decoding", type: "USES"),
             .init(source: "Speculative decoding", target: "Llama 3", type: "EVALUATED_ON"),
         ], "incomplete lines and relations to unknown entities are dropped")
+    }
+
+    func testLinesWithoutTheirLabelsStillCount() throws {
+        let reply = """
+        Entities:
+        - vLLM | tool
+        Speculative decoding (technique)
+        Llama 3 | model
+        A sentence (with an aside)
+        Relations:
+        vLLM | uses | Speculative decoding
+        vLLM | runs on | Llama 3
+        """
+        let graph = try XCTUnwrap(ExtractionText.parse(reply))
+        XCTAssertEqual(graph.entities, [.init(name: "vLLM", type: "tool"),
+                                        .init(name: "Speculative decoding", type: "technique"),
+                                        .init(name: "Llama 3", type: "model")])
+        XCTAssertEqual(graph.relations, [.init(source: "vLLM", target: "Speculative decoding", type: "USES")],
+                       "an unknown relation type without a label isn't a relation line")
     }
 
     func testARefusalIsNoGraph() {
