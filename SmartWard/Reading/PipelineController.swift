@@ -30,6 +30,8 @@ final class PipelineController {
     private(set) var isRunning = false
     private(set) var lastReport: PipelineRunner.Report?
     private(set) var unavailableReason: String?
+    /// Whether the keep-indexing-while-open loop is running.
+    var isIndexingWhileOpen: Bool { whileOpenTask != nil }
     /// How far the current run is, or `nil` when none is running. Its total
     /// is 0 (unknown) until the run has counted its work.
     private(set) var indexProgress: StepProgress?
@@ -37,6 +39,11 @@ final class PipelineController {
     private(set) var waiting = 0
     /// The same, split: not yet searchable, waiting for the graph, left out of it.
     private(set) var backlog = PipelineRunner.Backlog()
+    /// What graph extraction has done since the app started, for Settings → Indexing details.
+    private(set) var sessionGraph = GraphRunStats()
+    private(set) var runsThisSession = 0
+    private(set) var lastRunAt: Date?
+    private(set) var lastRunSeconds: TimeInterval = 0
     @ObservationIgnored private var whileOpenTask: Task<Void, Never>?
 
     var strength: Triage.Strength {
@@ -108,12 +115,17 @@ final class PipelineController {
                                     extraction: ExtractionSettings.tiers(),
                                     budget: BudgetSettings.current,
                                     summarizer: ArticleSummaryController.makeSummarizer())
+        let started = Date()
         do {
             let report = try await runner.run(context: context, until: Date().addingTimeInterval(budget)) { completed, total in
                 self.indexProgress = StepProgress(done: completed, total: total)
                 progress?(completed, total)
             }
             lastReport = report
+            sessionGraph.merge(report.graph)
+            runsThisSession += 1
+            lastRunAt = Date()
+            lastRunSeconds = Date().timeIntervalSince(started)
             refreshWaiting(context: context)
             SearchController.shared.markStale()
             return report
