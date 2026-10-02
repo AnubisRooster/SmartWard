@@ -19,47 +19,109 @@ struct FoundationModelsEntityExtractor: EntityExtracting {
     /// could keep listing until it ran out of room and failed.
     static let maxResponseTokens = 700
 
-    /// Plain text with Apple's relaxed guardrails (meant for transforming text
-    /// you were given): the default ones, which apply to guided generation,
-    /// turn down plenty of harmless articles as "unsafe", and every refusal
-    /// used to leave an article retried forever. Text that still doesn't fit
-    /// the window is tried again with its first half.
+    /// Plain text first, with Apple's relaxed guardrails (meant for
+    /// transforming text you were given): the default ones, which apply to
+    /// guided generation, turn down plenty of harmless articles as "unsafe".
+    /// When the answer can't be read, guided generation, whose shape is
+    /// guaranteed, gets a turn. Text that doesn't fit the window is tried
+    /// again with its first half.
     func extract(_ text: String) async throws -> ExtractionOutput {
         do {
             return try await extract(text, limit: maxInputCharacters)
         } catch let error as LanguageModelSession.GenerationError {
+            if let busy = Self.busy(error) { throw busy }
             guard case .exceededContextWindowSize = error else { throw error }
             return try await extract(text, limit: maxInputCharacters / 2)
         }
     }
 
     private func extract(_ text: String, limit: Int) async throws -> ExtractionOutput {
+        let prompt = ExtractionPrompt.user(String(text.prefix(limit)))
         let model = SystemLanguageModel(useCase: .general, guardrails: .permissiveContentTransformations)
         let session = LanguageModelSession(model: model, instructions: ExtractionText.instructions)
-        let prompt = ExtractionPrompt.user(String(text.prefix(limit)))
         var options = GenerationOptions()
         options.maximumResponseTokens = Self.maxResponseTokens
-        let reply: String
+        let reply = try await session.respond(to: prompt, options: options).content
+        if let graph = ExtractionText.parse(reply) { return ExtractionOutput(graph: graph) }
+
+        // The answer had no lines that could be read (or was a refusal in words).
+        let shape = ExtractionText.shape(of: reply)
+        let guided = LanguageModelSession(instructions: ExtractionPrompt.instructions)
+        var guidedOptions = GenerationOptions()
+        guidedOptions.maximumResponseTokens = Self.maxResponseTokens + 300
         do {
-            reply = try await session.respond(to: prompt, options: options).content
+            let graph = try await guided.respond(to: prompt, generating: GuidedGraph.self, options: guidedOptions)
+                .content.graph.sanitized()
+            guard !graph.entities.isEmpty else { throw ExtractionDeclined(shape: shape, guided: "no entities") }
+            return ExtractionOutput(graph: graph)
         } catch let error as LanguageModelSession.GenerationError {
-            switch error {
-            // Not this article's fault: try it again on a later run.
-            case .rateLimited, .concurrentRequests, .assetsUnavailable:
-                throw ExtractionBusy("Apple Intelligence is busy or limited right now: \(error.localizedDescription)")
-            default:
-                throw error
-            }
+            if let busy = Self.busy(error) { throw busy }
+            throw ExtractionDeclined(shape: shape, guided: Self.reason(error))
         }
-        // A refusal in words has no ENTITY lines: that's a failure, so the next extractor gets a turn.
-        guard let graph = ExtractionText.parse(reply) else { throw ExtractionDeclined() }
-        return ExtractionOutput(graph: graph)
+    }
+
+    /// Not this article's fault: try it again on a later run.
+    private static func busy(_ error: LanguageModelSession.GenerationError) -> ExtractionBusy? {
+        switch error {
+        case .rateLimited, .concurrentRequests, .assetsUnavailable:
+            return ExtractionBusy("Apple Intelligence is busy or limited right now: \(error.localizedDescription)")
+        default:
+            return nil
+        }
+    }
+
+    private static func reason(_ error: LanguageModelSession.GenerationError) -> String {
+        switch error {
+        case .guardrailViolation: return "turned down by Apple's safety guardrails"
+        case .exceededContextWindowSize: return "too long"
+        case .decodingFailure: return "couldn't be decoded"
+        default: return error.localizedDescription
+        }
     }
 }
 
-/// The on-device model answered without a usable graph.
+/// The graph's shape for guided generation: the model can only answer in it.
+@Generable
+struct GuidedGraph {
+    @Generable
+    struct Entity {
+        @Guide(description: "The entity's most common name")
+        var name: String
+        @Guide(.anyOf(ExtractedGraph.entityTypes))
+        var type: String
+    }
+
+    @Generable
+    struct Relation {
+        @Guide(description: "The name of a listed entity")
+        var source: String
+        @Guide(.anyOf(ExtractedGraph.relationTypes))
+        var type: String
+        @Guide(description: "The name of another listed entity")
+        var target: String
+    }
+
+    @Guide(description: "The specific things the document is about", .maximumCount(15))
+    var entities: [Entity]
+    @Guide(description: "Relations the document states between listed entities", .maximumCount(15))
+    var relations: [Relation]
+
+    var graph: ExtractedGraph {
+        ExtractedGraph(entities: entities.map { .init(name: $0.name, type: $0.type) },
+                       relations: relations.map { .init(source: $0.source, target: $0.target, type: $0.type) })
+    }
+}
+
+/// The on-device model answered without a usable graph, either way.
 struct ExtractionDeclined: LocalizedError {
-    var errorDescription: String? { "The on-device model didn't extract anything from this article." }
+    /// What the plain-text answer looked like (`ExtractionText.shape`).
+    var shape: String
+    /// Why guided generation didn't help.
+    var guided: String
+
+    var errorDescription: String? {
+        "The on-device model didn't extract anything (its answer: \(shape); structured retry: \(guided))."
+    }
 }
 
 /// Which provider and model do T2 extraction (D2).

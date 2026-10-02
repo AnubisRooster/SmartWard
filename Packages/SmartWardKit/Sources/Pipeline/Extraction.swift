@@ -152,18 +152,29 @@ public enum ExtractionText {
     List at most 15 entities and 15 relations, then stop.
     """
 
+    private enum Section { case entities, relations }
+
     /// The graph in a plain-text answer, sanitized; `nil` when it has no
-    /// entities at all (a refusal in words, or nothing usable).
+    /// entities at all (a refusal in words, or nothing usable). Besides the
+    /// format asked for, it reads the other shapes the on-device model tends
+    /// to answer in: the lines without their labels, "name (type)", bulleted
+    /// lists under an "Entities" or "Relations" heading, "Entities: a, b, c",
+    /// "a -> USES -> b", and JSON.
     public static func parse(_ text: String) -> ExtractedGraph? {
         var entities: [ExtractedGraph.Entity] = []
         var relations: [ExtractedGraph.Relation] = []
+        var section: Section?
         for raw in text.split(whereSeparator: \.isNewline) {
             var line = raw.trimmingCharacters(in: .whitespaces)
-            // List markers and emphasis: "- ", "* ", "1. ", "**ENTITY:**".
+            // List markers and emphasis: "- ", "* ", "1. ", "**ENTITY:**", "### Entities".
+            var bulleted = false
             if let marker = line.range(of: #"^(?:[-–•*]|\d{1,2}[.)])\s+"#, options: .regularExpression) {
                 line.removeSubrange(marker)
+                bulleted = true
             }
             line = line.replacingOccurrences(of: "**", with: "").replacingOccurrences(of: "`", with: "")
+            while line.hasPrefix("#") { line.removeFirst() }
+            line = line.trimmingCharacters(in: .whitespaces)
             let upper = line.uppercased()
             let parts: (String) -> [String] = { body in
                 body.split(separator: "|", omittingEmptySubsequences: false)
@@ -177,6 +188,9 @@ public enum ExtractionText {
                 let fields = parts(String(line.dropFirst("RELATION:".count)))
                 guard fields.count >= 3 else { continue }
                 relations.append(.init(source: fields[0], target: fields[2], type: fields[1]))
+            } else if let heading = heading(line) {
+                section = heading.section
+                entities += heading.items.compactMap { entity(in: $0, listed: true) }
             } else if line.contains("|") {
                 // The format without its labels: "name | type", "source | TYPE | target".
                 let fields = parts(line)
@@ -188,18 +202,92 @@ public enum ExtractionText {
                 } else if ExtractedGraph.relationTypes.contains(relationType) {
                     relations.append(.init(source: fields[0], target: fields[2], type: relationType))
                 }
-            } else if line.hasSuffix(")"), let open = line.lastIndex(of: "(") {
-                // "vLLM (tool)".
-                let name = line[..<open].trimmingCharacters(in: .whitespaces)
-                let type = line[line.index(after: open)..<line.index(before: line.endIndex)]
-                    .trimmingCharacters(in: .whitespaces).lowercased()
-                if !name.isEmpty, ExtractedGraph.entityTypes.contains(type) {
-                    entities.append(.init(name: name, type: type))
-                }
+            } else if let relation = arrowRelation(line) {
+                relations.append(relation)
+            } else if let entity = entity(in: line, listed: bulleted && section == .entities) {
+                entities.append(entity)
             }
         }
         let graph = ExtractedGraph(entities: entities, relations: relations).sanitized()
-        return graph.entities.isEmpty ? nil : graph
+        if !graph.entities.isEmpty { return graph }
+        // Some answers are JSON after all.
+        if text.contains("{"), let json = try? BYOKExtractor.decode(text) {
+            let graph = json.sanitized()
+            return graph.entities.isEmpty ? nil : graph
+        }
+        return nil
+    }
+
+    /// "Entities:", "Relations:" (or "Relationships"), optionally followed
+    /// by the entities inline: "Entities: vLLM, Llama 3".
+    private static func heading(_ line: String) -> (section: Section, items: [String])? {
+        let lower = line.lowercased()
+        let words: [(String, Section)] = [("entities", .entities), ("relationships", .relations),
+                                          ("relations", .relations)]
+        for (word, section) in words where lower.hasPrefix(word) {
+            let rest = line.dropFirst(word.count).trimmingCharacters(in: .whitespaces)
+            if rest.isEmpty { return (section, []) }
+            guard rest.hasPrefix(":") else { return nil }
+            let inline = rest.dropFirst().trimmingCharacters(in: .whitespaces)
+            guard section == .entities else { return (section, []) }
+            return (section, inline.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) })
+        }
+        return nil
+    }
+
+    /// "vLLM (tool)" anywhere; in a list of entities also "vLLM",
+    /// "vLLM: a serving engine" and "vLLM (tool) - a serving engine".
+    private static func entity(in line: String, listed: Bool) -> ExtractedGraph.Entity? {
+        func typed(_ text: String) -> ExtractedGraph.Entity? {
+            guard text.hasSuffix(")"), let open = text.lastIndex(of: "(") else { return nil }
+            let name = text[..<open].trimmingCharacters(in: .whitespaces)
+            let type = text[text.index(after: open)..<text.index(before: text.endIndex)]
+                .trimmingCharacters(in: .whitespaces).lowercased()
+            guard !name.isEmpty, ExtractedGraph.entityTypes.contains(type) else { return nil }
+            return .init(name: name, type: type)
+        }
+        if let entity = typed(line) { return entity }
+        guard listed else { return nil }
+        var name = line
+        for separator in [": ", " - ", " – ", " — "] {
+            if let range = name.range(of: separator) { name = String(name[..<range.lowerBound]) }
+        }
+        name = name.trimmingCharacters(in: .whitespaces.union(CharacterSet(charactersIn: ":.")))
+        if let entity = typed(name) { return entity }
+        // A sentence in the list isn't a name.
+        guard !name.isEmpty, name.split(separator: " ").count <= 6 else { return nil }
+        return .init(name: name, type: "concept")
+    }
+
+    /// "vLLM -> USES -> Speculative decoding", or "vLLM → Llama 3".
+    private static func arrowRelation(_ line: String) -> ExtractedGraph.Relation? {
+        let parts = line.replacingOccurrences(of: "→", with: "->")
+            .components(separatedBy: "->")
+            .map { $0.trimmingCharacters(in: .whitespaces.union(CharacterSet(charactersIn: "-"))) }
+        switch parts.count {
+        case 3: return .init(source: parts[0], target: parts[2], type: parts[1])
+        case 2: return .init(source: parts[0], target: parts[1], type: "RELATES_TO")
+        default: return nil
+        }
+    }
+
+    /// What an answer that couldn't be read looked like, without its text
+    /// (it may quote the article): for Settings → Indexing details.
+    public static func shape(of reply: String) -> String {
+        let trimmed = reply.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "an empty answer" }
+        let lower = trimmed.lowercased()
+        let refusals = ["i'm sorry", "i am sorry", "sorry", "i can't", "i cannot", "i'm unable", "i am unable",
+                        "as an ai", "i apologize"]
+        if refusals.contains(where: { lower.hasPrefix($0) }) { return "a refusal" }
+        if trimmed.hasPrefix("{") || trimmed.hasPrefix("[") { return "JSON that didn't fit" }
+        let lines = trimmed.split(whereSeparator: \.isNewline)
+        let bulleted = lines.filter {
+            $0.trimmingCharacters(in: .whitespaces)
+                .range(of: #"^(?:[-–•*]|\d{1,2}[.)])\s+"#, options: .regularExpression) != nil
+        }.count
+        let piped = lines.filter { $0.contains("|") }.count
+        return "\(lines.count) lines, \(bulleted) bulleted, \(piped) with \"|\""
     }
 }
 
