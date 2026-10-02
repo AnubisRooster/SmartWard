@@ -1,5 +1,6 @@
 import Foundation
 import SwiftData
+import BYOKLLMKit
 import RetrievalKit
 import KnowledgeStore
 
@@ -103,12 +104,14 @@ public enum GraphLinker {
     }
 }
 
-/// One article's text, handed to extraction off the main actor.
+/// One article's (or turn's) text, handed to extraction off the main actor.
 private struct ExtractionJob: Sendable {
     let id: UUID
     /// In order of preference; the next is tried when one fails.
     let extractors: [any EntityExtracting]
     let texts: [String]
+    /// Longest a provider call may take before the next extractor gets a turn.
+    let providerTimeout: TimeInterval
 }
 
 /// One extractor's try at one article.
@@ -118,6 +121,71 @@ private struct ExtractionAttempt: Sendable {
     let seconds: Double
     /// Why it failed, or `nil` when it answered.
     let error: String?
+    /// The failure may well not happen next time (rate limit, timeout,
+    /// offline, the device model busy): it isn't held against the article.
+    var transient = false
+}
+
+/// A provider extraction that took longer than `GraphIndexer.providerTimeout`.
+public struct ExtractionTimedOut: LocalizedError, Sendable {
+    public let seconds: TimeInterval
+
+    public init(seconds: TimeInterval) {
+        self.seconds = seconds
+    }
+
+    public var errorDescription: String? { "No answer within \(Int(seconds)) seconds." }
+}
+
+/// An extractor that can't take work right now (Apple Intelligence busy, or
+/// rate-limited while SmartWard is in the background): try again later.
+public struct ExtractionBusy: LocalizedError, Sendable {
+    public let reason: String
+
+    public init(_ reason: String) {
+        self.reason = reason
+    }
+
+    public var errorDescription: String? { reason }
+}
+
+/// Takes your provider out of graph extraction for a while after it
+/// rate-limits, times out or keeps failing, so articles go straight to
+/// Apple Intelligence instead of each waiting on it first. Free models have
+/// low per-minute and per-day limits, and are often slow or don't answer in
+/// the JSON format. The app keeps one across runs.
+@MainActor
+public final class ProviderPause {
+    /// How long a pause lasts.
+    nonisolated public static let cooldown: TimeInterval = 10 * 60
+    /// Failures in a row (of any kind) that pause it.
+    nonisolated public static let failuresInARow = 3
+
+    public private(set) var until: Date?
+    /// The failure that paused it.
+    public private(set) var reason: String?
+    private var failures = 0
+
+    public init() {}
+
+    public func isActive(now: Date) -> Bool {
+        guard let until else { return false }
+        return now < until
+    }
+
+    /// Notes how one provider call went: a temporary failure pauses it right
+    /// away, any others after `failuresInARow`; an answer resets the count.
+    func note(failed error: String?, transient: Bool, now: Date) {
+        guard let error else {
+            failures = 0
+            return
+        }
+        failures += 1
+        guard transient || failures >= Self.failuresInARow else { return }
+        until = now.addingTimeInterval(Self.cooldown)
+        reason = error
+        failures = 0
+    }
 }
 
 /// What graph extraction did in a run, for Settings → Indexing details:
@@ -135,6 +203,15 @@ public struct GraphRunStats: Equatable, Sendable {
     public var unavailable = 0
     /// Your provider was skipped because today's budget is spent.
     public var budgetPaused = false
+    /// Your provider was skipped for a while after rate-limiting, timing out
+    /// or failing several times in a row (`ProviderPause`).
+    public var providerPaused = false
+    /// Articles whose extractors all failed for temporary reasons: tried
+    /// again next run, not counted against them.
+    public var deferred = 0
+    /// Chat turns added to the graph, and turns whose extraction failed.
+    public var turnsLinked = 0
+    public var turnsFailed = 0
     /// The latest distinct failures, newest first.
     public var errors: [String] = []
 
@@ -165,7 +242,11 @@ public struct GraphRunStats: Equatable, Sendable {
         providerSeconds += later.providerSeconds
         onDeviceSeconds += later.onDeviceSeconds
         unavailable += later.unavailable
+        deferred += later.deferred
+        turnsLinked += later.turnsLinked
+        turnsFailed += later.turnsFailed
         budgetPaused = later.budgetPaused || (budgetPaused && later.isEmpty)
+        providerPaused = later.providerPaused || (providerPaused && later.isEmpty)
         for error in later.errors.reversed() { noteError(error) }
     }
 
@@ -218,6 +299,9 @@ public final class GraphIndexer {
     nonisolated public static let maxGraphAttempts = 2
     /// Provider extractions run this many at a time (on-device ones one at a time).
     nonisolated public static let concurrentExtractions = 3
+    /// Longest a provider extraction may take before Apple Intelligence gets
+    /// the article: free models can sit in a queue for minutes.
+    nonisolated public static let defaultProviderTimeout: TimeInterval = 45
 
     private let context: ModelContext
     private let embedder: EmbeddingModel
@@ -226,8 +310,12 @@ public final class GraphIndexer {
     private let now: () -> Date
     private let chunker = RetrievalKit.Chunker(targetSize: 1_200, overlapSentences: 0)
 
-    /// What graph extraction did this run (articles; turns aren't counted).
+    /// What graph extraction did this run.
     public private(set) var stats = GraphRunStats()
+    /// Skips your provider for a while after it rate-limits or keeps failing;
+    /// the app passes one that outlives a run.
+    public var providerPause = ProviderPause()
+    public var providerTimeout = GraphIndexer.defaultProviderTimeout
     /// Usage rows written this run (T2 calls), for reporting.
     public private(set) var usageRecords: [UsageRecord] = []
     /// When today's budget is used up, nothing goes to your provider: work
@@ -290,10 +378,29 @@ public final class GraphIndexer {
 
     /// The extractors that may see `article` right now, in order of preference.
     private func extractors(for article: Article, links: [UUID: ProjectLink]) -> [any EntityExtracting] {
-        let preference = Self.tiers(for: article, links: links)
-        let allowed = withinBudget(preference)
+        extractors(allowing: Self.tiers(for: article, links: links))
+    }
+
+    /// `preference` without your provider while today's budget is spent or
+    /// it's paused, as extractors.
+    private func extractors(allowing preference: [ExtractionTier]) -> [any EntityExtracting] {
+        var allowed = withinBudget(preference)
         if allowed.count < preference.count, tiers.byok != nil { stats.budgetPaused = true }
+        if allowed.contains(.byok), tiers.byok != nil, providerPause.isActive(now: now()) {
+            allowed.removeAll { $0 == .byok }
+            stats.providerPaused = true
+        }
         return allowed.compactMap { tiers.extractor(for: $0) }
+    }
+
+    /// Records `result`'s attempts in the stats and the provider pause.
+    private func note(_ result: ExtractionResult) {
+        for attempt in result.attempts {
+            stats.record(attempt)
+            if attempt.tier == .byok {
+                providerPause.note(failed: attempt.error, transient: attempt.transient, now: now())
+            }
+        }
     }
 
     /// Whether `article` would go to your provider first (and so can be
@@ -316,7 +423,8 @@ public final class GraphIndexer {
 
     /// Extracts `articles` at the same time (each trying its extractors in
     /// order), then links them one by one. An article whose every extractor
-    /// failed has `graphAttempts` raised and stays `embedded`.
+    /// failed has `graphAttempts` raised and stays `embedded`, unless a
+    /// failure was temporary: then it's simply tried again next run.
     public func index(_ articles: [Article], links: [UUID: ProjectLink]) async -> [UUID: Outcome] {
         var outcomes: [UUID: Outcome] = [:]
         var chunksByID: [UUID: [KnowledgeStore.Chunk]] = [:]
@@ -330,7 +438,8 @@ public final class GraphIndexer {
             }
             let chunks = (article.chunks ?? []).sorted { $0.ordinal < $1.ordinal }
             chunksByID[article.id] = chunks
-            jobs.append(ExtractionJob(id: article.id, extractors: extractors, texts: chunks.map(\.text)))
+            jobs.append(ExtractionJob(id: article.id, extractors: extractors, texts: chunks.map(\.text),
+                                      providerTimeout: providerTimeout))
         }
 
         let results = await withTaskGroup(of: ExtractionResult.self) { group in
@@ -342,14 +451,19 @@ public final class GraphIndexer {
 
         for article in articles {
             guard let result = results[article.id], let chunks = chunksByID[article.id] else { continue }
-            for attempt in result.attempts { stats.record(attempt) }
+            note(result)
             if result.cancelled {
                 outcomes[article.id] = .cancelled
                 continue
             }
             guard result.tier != nil else {
-                article.graphAttempts += 1
-                outcomes[article.id] = .failed
+                if result.attempts.contains(where: \.transient) {
+                    stats.deferred += 1
+                    outcomes[article.id] = .unavailable
+                } else {
+                    article.graphAttempts += 1
+                    outcomes[article.id] = .failed
+                }
                 continue
             }
             do {
@@ -358,20 +472,26 @@ public final class GraphIndexer {
                 outcomes[article.id] = .failed
                 continue
             }
-            var total = GraphLinker.Result()
-            for (group, output) in zip(result.groups, result.outputs) {
-                recordUsage(output, tier: result.tier, feature: "extraction")
-                let batch = group.compactMap { chunks.indices.contains($0) ? chunks[$0] : nil }
-                let linked = await GraphLinker.link(output.graph, chunks: batch, resolver: resolver, now: now())
-                total.mentions += linked.mentions
-                total.edges += linked.edges
-                total.nodesCreated += linked.nodesCreated
-            }
+            let total = await link(result, chunks: chunks)
             article.stage = .linked
             outcomes[article.id] = .linked(total)
             if result.tier == .byok { stats.providerLinked += 1 } else { stats.onDeviceLinked += 1 }
         }
         return outcomes
+    }
+
+    /// Links what `result` extracted, each output to the chunks it covers.
+    private func link(_ result: ExtractionResult, chunks: [KnowledgeStore.Chunk]) async -> GraphLinker.Result {
+        var total = GraphLinker.Result()
+        for (group, output) in zip(result.groups, result.outputs) {
+            recordUsage(output, tier: result.tier, feature: "extraction")
+            let batch = group.compactMap { chunks.indices.contains($0) ? chunks[$0] : nil }
+            let linked = await GraphLinker.link(output.graph, chunks: batch, resolver: resolver, now: now())
+            total.mentions += linked.mentions
+            total.edges += linked.edges
+            total.nodesCreated += linked.nodesCreated
+        }
+        return total
     }
 
     /// Tries `job`'s extractors in order until one answers for all of its text.
@@ -389,7 +509,11 @@ public final class GraphIndexer {
                 for group in groups {
                     let text = group.map { job.texts[$0] }.joined(separator: "\n\n")
                     calls += 1
-                    outputs.append(try await extractor.extract(text))
+                    if extractor.tier == .byok {
+                        outputs.append(try await withTimeout(job.providerTimeout) { try await extractor.extract(text) })
+                    } else {
+                        outputs.append(try await extractor.extract(text))
+                    }
                 }
                 attempts.append(ExtractionAttempt(tier: extractor.tier, calls: calls,
                                                   seconds: Date().timeIntervalSince(started), error: nil))
@@ -398,12 +522,48 @@ public final class GraphIndexer {
             } catch is CancellationError {
                 return ExtractionResult(id: job.id, cancelled: true, attempts: attempts)
             } catch {
+                // A stopped run cancels its network calls, which fail as `URLError.cancelled`.
+                if Task.isCancelled { return ExtractionResult(id: job.id, cancelled: true, attempts: attempts) }
                 attempts.append(ExtractionAttempt(tier: extractor.tier, calls: calls,
-                                                  seconds: Date().timeIntervalSince(started), error: describe(error)))
+                                                  seconds: Date().timeIntervalSince(started), error: describe(error),
+                                                  transient: isTransient(error)))
                 continue
             }
         }
         return ExtractionResult(id: job.id, attempts: attempts)
+    }
+
+    /// `work`'s result, or `ExtractionTimedOut` after `seconds`.
+    nonisolated static func withTimeout<T: Sendable>(_ seconds: TimeInterval,
+                                                     _ work: @escaping @Sendable () async throws -> T) async throws -> T {
+        try await withThrowingTaskGroup(of: T.self) { group in
+            group.addTask { try await work() }
+            group.addTask {
+                try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+                throw ExtractionTimedOut(seconds: seconds)
+            }
+            defer { group.cancelAll() }
+            guard let first = try await group.next() else { throw CancellationError() }
+            return first
+        }
+    }
+
+    /// Whether `error` may well not happen on a later try: rate limits,
+    /// server trouble, timeouts, no connection, a busy device model.
+    nonisolated static func isTransient(_ error: Error) -> Bool {
+        switch error {
+        case is ExtractionTimedOut, is ExtractionBusy:
+            return true
+        case let error as LLMCompletionError:
+            return error.isRetryable
+        case let error as URLError:
+            let codes: Set<URLError.Code> = [.timedOut, .notConnectedToInternet, .networkConnectionLost,
+                                             .cannotFindHost, .cannotConnectToHost, .dnsLookupFailed,
+                                             .internationalRoamingOff, .dataNotAllowed, .callIsActive]
+            return codes.contains(error.code)
+        default:
+            return false
+        }
     }
 
     /// A failure in a line: the provider's own message where there is one.
@@ -424,10 +584,14 @@ public final class GraphIndexer {
 
     // MARK: Conversation turns
 
-    /// Chunks, embeds and links one turn.
+    /// Chunks, embeds and links one turn, trying its extractors in order
+    /// like an article's.
     /// - Returns: `nil` when no allowed extractor is available.
+    /// - Throws: `GraphIndexError.extractionFailed` when every extractor
+    ///   failed; unless a failure was temporary, that counts in `graphAttempts`.
     public func index(_ message: Message) async throws -> GraphLinker.Result? {
-        guard let extractor = tiers.first(in: withinBudget(Self.tiers(for: message.conversation))) else { return nil }
+        let extractors = extractors(allowing: Self.tiers(for: message.conversation))
+        guard !extractors.isEmpty else { return nil }
         for old in message.chunks ?? [] { context.delete(old) }
         message.chunks = []
 
@@ -445,9 +609,20 @@ public final class GraphIndexer {
             message.chunks?.append(chunk)
             chunks.append(chunk)
         }
-        let result = try await extractAndLink(chunks, with: extractor, feature: "extraction")
+        let job = ExtractionJob(id: message.id, extractors: extractors, texts: chunks.map(\.text),
+                                providerTimeout: providerTimeout)
+        let result = await Self.extract(job)
+        note(result)
+        if result.cancelled { throw CancellationError() }
+        guard result.tier != nil else {
+            stats.turnsFailed += 1
+            if !result.attempts.contains(where: \.transient) { message.graphAttempts += 1 }
+            throw GraphIndexError.extractionFailed
+        }
+        let linked = await link(result, chunks: chunks)
         message.indexedAt = now()
-        return result
+        stats.turnsLinked += 1
+        return linked
     }
 
     // MARK: Shared
@@ -456,28 +631,6 @@ public final class GraphIndexer {
     func withinBudget(_ preference: [ExtractionTier]) -> [ExtractionTier] {
         guard let budget, budget.isExhausted(context: context, now: now()) else { return preference }
         return preference.filter { $0 != .byok }
-    }
-
-    private func extractAndLink(_ chunks: [KnowledgeStore.Chunk], with extractor: any EntityExtracting,
-                                feature: String) async throws -> GraphLinker.Result {
-        var total = GraphLinker.Result()
-        let maxBatches = extractor.tier == .onDevice ? Self.maxOnDeviceBatches : 1
-        for batch in Self.batches(chunks, maxCharacters: extractor.maxInputCharacters).prefix(maxBatches) {
-            let text = batch.map(\.text).joined(separator: "\n\n")
-            let output = try await extractor.extract(text)
-            if let tokens = output.usage {
-                let record = UsageLedger.record(provider: output.provider ?? extractor.tier.rawValue,
-                                                model: output.model ?? "", feature: feature,
-                                                inputTokens: tokens.inputTokens, outputTokens: tokens.outputTokens,
-                                                reportedCostUSD: tokens.costUSD, context: context, now: now())
-                usageRecords.append(record)
-            }
-            let linked = await GraphLinker.link(output.graph, chunks: batch, resolver: resolver, now: now())
-            total.mentions += linked.mentions
-            total.edges += linked.edges
-            total.nodesCreated += linked.nodesCreated
-        }
-        return total
     }
 
     /// Positions of consecutive texts of these `lengths`, grouped up to `maxCharacters`.
@@ -493,24 +646,6 @@ public final class GraphIndexer {
             }
             current.append(index)
             length += size
-        }
-        if !current.isEmpty { result.append(current) }
-        return result
-    }
-
-    /// Consecutive chunks grouped up to `maxCharacters` of text.
-    static func batches(_ chunks: [KnowledgeStore.Chunk], maxCharacters: Int) -> [[KnowledgeStore.Chunk]] {
-        var result: [[KnowledgeStore.Chunk]] = []
-        var current: [KnowledgeStore.Chunk] = []
-        var length = 0
-        for chunk in chunks {
-            if !current.isEmpty, length + chunk.text.count > maxCharacters {
-                result.append(current)
-                current = []
-                length = 0
-            }
-            current.append(chunk)
-            length += chunk.text.count
         }
         if !current.isEmpty { result.append(current) }
         return result

@@ -110,6 +110,9 @@ public final class PipelineRunner {
     private let budget: DailyBudget?
     /// Writes each newly indexed article's summary, so it's ready when opened.
     private let summarizer: ArticleSummarizer?
+    /// Keeps your provider out of graph extraction for a while after it
+    /// rate-limits or keeps failing, across runs.
+    private let providerPause: ProviderPause?
     private let now: () -> Date
 
     /// A turn is indexed once it's this old, so a reply still being saved isn't cut short.
@@ -118,7 +121,8 @@ public final class PipelineRunner {
     public init(embedder: EmbeddingModel, fullText: (any FullTextFetching)?,
                 judge: (any RelevanceJudging)? = nil, strength: Triage.Strength = .balanced,
                 extraction: ExtractionTiers? = nil, budget: DailyBudget? = nil,
-                summarizer: ArticleSummarizer? = nil, now: @escaping () -> Date = { Date() }) {
+                summarizer: ArticleSummarizer? = nil, providerPause: ProviderPause? = nil,
+                now: @escaping () -> Date = { Date() }) {
         self.embedder = embedder
         self.fullText = fullText
         self.judge = judge
@@ -126,6 +130,7 @@ public final class PipelineRunner {
         self.extraction = extraction
         self.budget = budget
         self.summarizer = summarizer
+        self.providerPause = providerPause
         self.now = now
     }
 
@@ -217,6 +222,7 @@ public final class PipelineRunner {
         if let extraction {
             graph = try GraphIndexer(context: context, embedder: embedder, tiers: extraction, now: now)
             graph?.budget = budget
+            if let providerPause { graph?.providerPause = providerPause }
         }
         if extraction != nil || summarizer != nil {
             for link in try context.fetch(FetchDescriptor<ProjectLink>()) {
@@ -243,10 +249,7 @@ public final class PipelineRunner {
             }
             if graph != nil {
                 let settled = now().addingTimeInterval(-Self.turnSettleTime)
-                total += try context.fetchCount(FetchDescriptor<Message>(predicate: #Predicate { message in
-                    message.indexedAt == nil && message.createdAt < settled
-                        && (message.role == "user" || message.role == "assistant")
-                }))
+                total += try context.fetchCount(FetchDescriptor<Message>(predicate: Self.pendingTurns(settledBefore: settled)))
             }
         }
 
@@ -354,15 +357,21 @@ public final class PipelineRunner {
         return nil
     }
 
+    /// Settled chat turns not yet in the graph, leaving out ones whose
+    /// extraction kept failing.
+    static func pendingTurns(settledBefore settled: Date) -> Predicate<Message> {
+        let limit = GraphIndexer.maxGraphAttempts
+        return #Predicate { message in
+            message.indexedAt == nil && message.createdAt < settled && message.graphAttempts < limit
+                && (message.role == "user" || message.role == "assistant")
+        }
+    }
+
     /// The oldest settled conversation turn not yet in the graph.
     private func nextTurn(excluding skipped: Set<UUID>, context: ModelContext) throws -> Message? {
         let settled = now().addingTimeInterval(-Self.turnSettleTime)
-        var descriptor = FetchDescriptor<Message>(
-            predicate: #Predicate { message in
-                message.indexedAt == nil && message.createdAt < settled
-                    && (message.role == "user" || message.role == "assistant")
-            },
-            sortBy: [SortDescriptor(\.createdAt)])
+        var descriptor = FetchDescriptor<Message>(predicate: Self.pendingTurns(settledBefore: settled),
+                                                  sortBy: [SortDescriptor(\.createdAt)])
         descriptor.fetchLimit = Self.batchSize + skipped.count
         return try context.fetch(descriptor).first { !skipped.contains($0.id) }
     }

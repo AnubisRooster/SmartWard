@@ -45,6 +45,9 @@ final class PipelineController {
     private(set) var lastRunAt: Date?
     private(set) var lastRunSeconds: TimeInterval = 0
     @ObservationIgnored private var whileOpenTask: Task<Void, Never>?
+    /// Keeps your provider out of graph extraction for a while after it
+    /// rate-limits or keeps failing, from one run to the next.
+    let providerPause = ProviderPause()
 
     var strength: Triage.Strength {
         Triage.Strength(rawValue: UserDefaults.standard.string(forKey: Self.strengthKey) ?? "") ?? .balanced
@@ -114,7 +117,8 @@ final class PipelineController {
                                     strength: strength,
                                     extraction: ExtractionSettings.tiers(),
                                     budget: BudgetSettings.current,
-                                    summarizer: ArticleSummaryController.makeSummarizer())
+                                    summarizer: ArticleSummaryController.makeSummarizer(),
+                                    providerPause: providerPause)
         let started = Date()
         do {
             let report = try await runner.run(context: context, until: Date().addingTimeInterval(budget)) { completed, total in

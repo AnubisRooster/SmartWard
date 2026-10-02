@@ -253,8 +253,10 @@ public struct BYOKExtractor: EntityExtracting {
                    model: model,
                    messages: [.system(ExtractionPrompt.instructions), .user(ExtractionPrompt.user(text))],
                    responseFormat: .jsonSchema(name: "knowledge_graph", schema: ExtractionPrompt.schema),
-                   maxTokens: 2_048,
-                   temperature: 0)
+                   // Room for models that think before answering (their
+                   // reasoning counts against this); no temperature, which
+                   // OpenAI's reasoning models reject unless it's the default.
+                   maxTokens: 4_096)
     }
 
     public func extract(_ text: String) async throws -> ExtractionOutput {
