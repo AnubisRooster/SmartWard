@@ -795,6 +795,43 @@ final class ExtractionTextTests: XCTestCase {
                        "an unknown relation type without a label isn't a relation line")
     }
 
+    func testListsUnderHeadingsArrowsAndJSONAreRead() throws {
+        let bullets = """
+        ### Entities
+        1. **vLLM** (tool): a serving engine
+        2. Speculative decoding - a way to generate faster
+        - Llama 3
+        - This article explains how the two are combined in production systems
+        **Relationships:**
+        - vLLM -> USES -> Speculative decoding
+        - Speculative decoding → Llama 3
+        """
+        let graph = try XCTUnwrap(ExtractionText.parse(bullets))
+        XCTAssertEqual(graph.entities, [.init(name: "vLLM", type: "tool"),
+                                        .init(name: "Speculative decoding", type: "concept"),
+                                        .init(name: "Llama 3", type: "concept")],
+                       "a sentence in the list isn't a name")
+        XCTAssertEqual(graph.relations, [.init(source: "vLLM", target: "Speculative decoding", type: "USES"),
+                                         .init(source: "Speculative decoding", target: "Llama 3", type: "RELATES_TO")])
+
+        let inline = try XCTUnwrap(ExtractionText.parse("Entities: vLLM (tool), Llama 3, PagedAttention"))
+        XCTAssertEqual(inline.entities.map(\.name), ["vLLM", "Llama 3", "PagedAttention"])
+
+        let json = try XCTUnwrap(ExtractionText.parse(#"{"entities":[{"name":"vLLM","type":"tool"}],"relations":[]}"#))
+        XCTAssertEqual(json.entities, [.init(name: "vLLM", type: "tool")])
+
+        XCTAssertNil(ExtractionText.parse("Entities mentioned include vLLM and Llama 3."), "prose isn't a list")
+        XCTAssertNil(ExtractionText.parse("- vLLM\n- Llama 3"), "bullets with no heading could be anything")
+    }
+
+    func testAnUnreadableAnswerIsDescribedWithoutItsText() {
+        XCTAssertEqual(ExtractionText.shape(of: "  "), "an empty answer")
+        XCTAssertEqual(ExtractionText.shape(of: "I'm sorry, but I can't help with that."), "a refusal")
+        XCTAssertEqual(ExtractionText.shape(of: #"{"nodes":[]}"#), "JSON that didn't fit")
+        XCTAssertEqual(ExtractionText.shape(of: "The article covers\n- one thing\n- a | b"),
+                       "3 lines, 2 bulleted, 1 with \"|\"")
+    }
+
     func testARefusalIsNoGraph() {
         XCTAssertNil(ExtractionText.parse("I'm sorry, but I can't help with that."))
         XCTAssertNil(ExtractionText.parse(""))
