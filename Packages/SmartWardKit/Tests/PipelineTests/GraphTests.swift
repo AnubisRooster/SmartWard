@@ -824,6 +824,37 @@ final class ExtractionTextTests: XCTestCase {
         XCTAssertNil(ExtractionText.parse("- vLLM\n- Llama 3"), "bullets with no heading could be anything")
     }
 
+    func testMarkdownTablesAreRead() throws {
+        let reply = """
+        | # | Entity | Type |
+        |---|--------|------|
+        | 1 | **vLLM** | tool |
+        | 2 | Speculative decoding | technique |
+        | 3 | Llama 3 | model |
+
+        | Source | Relation | Target |
+        | :--- | :---: | ---: |
+        | vLLM | uses | Speculative decoding |
+        | Speculative decoding | evaluated on | Llama 3 |
+        | vLLM | runs on | Llama 3 |
+        """
+        let graph = try XCTUnwrap(ExtractionText.parse(reply))
+        XCTAssertEqual(graph.entities, [.init(name: "vLLM", type: "tool"),
+                                        .init(name: "Speculative decoding", type: "technique"),
+                                        .init(name: "Llama 3", type: "model")])
+        XCTAssertEqual(graph.relations, [.init(source: "vLLM", target: "Speculative decoding", type: "USES"),
+                                         .init(source: "Speculative decoding", target: "Llama 3", type: "EVALUATED_ON")],
+                       "header and separator rows, and unknown relation types, are skipped")
+    }
+
+    func testAProviderAnswerInLinesInsteadOfJSONStillCounts() async throws {
+        let reply = "ENTITY: vLLM | tool\nENTITY: Llama 3 | model\nRELATION: vLLM | USES | Llama 3"
+        let extractor = BYOKExtractor(client: FakeCompletion(text: reply), provider: .openrouter, model: "cheap")
+        let output = try await extractor.extract("vLLM serves Llama 3.")
+        XCTAssertEqual(output.graph.entities.map(\.name), ["vLLM", "Llama 3"])
+        XCTAssertEqual(output.graph.relations.count, 1)
+    }
+
     func testAnUnreadableAnswerIsDescribedWithoutItsText() {
         XCTAssertEqual(ExtractionText.shape(of: "  "), "an empty answer")
         XCTAssertEqual(ExtractionText.shape(of: "I'm sorry, but I can't help with that."), "a refusal")

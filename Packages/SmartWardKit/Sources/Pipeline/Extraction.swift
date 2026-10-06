@@ -192,15 +192,18 @@ public enum ExtractionText {
                 section = heading.section
                 entities += heading.items.compactMap { entity(in: $0, listed: true) }
             } else if line.contains("|") {
-                // The format without its labels: "name | type", "source | TYPE | target".
-                let fields = parts(line)
+                // The format without its labels ("name | type", "source | TYPE | target"),
+                // and markdown table rows ("| vLLM | tool |", "| 1 | vLLM | tool | … |").
+                // Header and separator rows match neither and are skipped.
+                let fields = parts(line).filter { !$0.isEmpty }
                 let relationType = fields.count >= 3
                     ? fields[1].uppercased().replacingOccurrences(of: " ", with: "_") : ""
-                if fields.count == 2, !fields[0].isEmpty,
-                   ExtractedGraph.entityTypes.contains(fields[1].lowercased()) {
-                    entities.append(.init(name: fields[0], type: fields[1]))
-                } else if ExtractedGraph.relationTypes.contains(relationType) {
+                if ExtractedGraph.relationTypes.contains(relationType) {
                     relations.append(.init(source: fields[0], target: fields[2], type: relationType))
+                } else if let typeIndex = fields.indices.dropFirst().first(where: {
+                    ExtractedGraph.entityTypes.contains(fields[$0].lowercased())
+                }), fields[typeIndex - 1].contains(where: \.isLetter) {
+                    entities.append(.init(name: fields[typeIndex - 1], type: fields[typeIndex].lowercased()))
                 }
             } else if let relation = arrowRelation(line) {
                 relations.append(relation)
@@ -379,7 +382,14 @@ public struct BYOKExtractor: EntityExtracting {
 
     public func extract(_ text: String) async throws -> ExtractionOutput {
         let response = try await client.complete(request(for: text))
-        let graph = try Self.decode(response.text)
+        let graph: ExtractedGraph
+        do {
+            graph = try Self.decode(response.text)
+        } catch {
+            // Now and then a model answers in lines or a table instead of JSON.
+            guard let lines = ExtractionText.parse(response.text) else { throw error }
+            graph = lines
+        }
         return ExtractionOutput(graph: graph.sanitized(), usage: response.usage,
                                 provider: provider.rawValue, model: response.model ?? model)
     }
