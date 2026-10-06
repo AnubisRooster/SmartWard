@@ -6,7 +6,7 @@ _Auto-generated from the GitNexus knowledge graph on every push to `main`. Do no
 
 | nodes | edges |
 | ----- | ----- |
-| 8566 | 49012 |
+| 8576 | 49045 |
 
 ## God nodes (highest out-degree, tests excluded)
 
